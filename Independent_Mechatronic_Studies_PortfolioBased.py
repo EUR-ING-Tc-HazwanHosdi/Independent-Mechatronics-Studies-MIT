@@ -20,7 +20,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚙️ Industrial AI Mechatronics Study Tracker")
+st.title("⚙️ Independent Studies (Non-Degree) — Mechatronics Engineering, Artificial Intelligence & Automation (MIT OpenCourseWare-based) Study Tracker")
 
 # -----------------------------
 # DATABASE
