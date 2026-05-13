@@ -21,7 +21,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # LOGO (SAFE LOAD)
 # -----------------------------
 if os.path.exists(LOGO_PATH):
-    st.sidebar.image(LOGO_PATH, width=180)
+    st.sidebar.image(LOGO_PATH, width=500)
 else:
     st.sidebar.warning("Logo not found: AIMECHA.png")
 
