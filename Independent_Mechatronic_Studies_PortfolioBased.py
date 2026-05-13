@@ -139,22 +139,53 @@ def delete_journal(jid):
 # -----------------------------
 # EXERCISES
 # -----------------------------
-def save_exercise(course_id, course_name, file):
-    path = os.path.join(UPLOAD_FOLDER, file.name)
+elif menu == "Exercises":
+    st.subheader("📤 Upload Exercises")
 
-    with open(path, "wb") as f:
-        f.write(file.getbuffer())
+    courses = get_courses()
 
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO exercises (course_id, course_name, file_name, file_path, created_at)
-        VALUES (?,?,?,?,?)
-    """, (course_id, course_name, file.name, path, datetime.now().isoformat()))
+    if not courses.empty:
+        course = st.selectbox("Course", courses["course_name"])
+        cid = courses[courses["course_name"] == course]["id"].values[0]
 
-    conn.commit()
+        file = st.file_uploader("Upload PDF / file")
 
-def get_exercises():
-    return pd.read_sql_query("SELECT * FROM exercises ORDER BY created_at DESC", conn)
+        if file and st.button("Save"):
+            save_exercise(cid, course, file)
+            st.success("Uploaded")
+            st.rerun()
+
+    st.divider()
+
+    st.write("## 📁 Uploaded Exercises")
+
+    ex = get_exercises()
+
+    if ex.empty:
+        st.info("No exercises uploaded yet.")
+    else:
+        for _, r in ex.iterrows():
+
+            col1, col2 = st.columns([6,1])
+
+            with col1:
+                st.write(f"📘 **{r['course_name']}**")
+                st.write(r["file_name"])
+                st.caption(r["created_at"])
+
+                with open(r["file_path"], "rb") as f:
+                    st.download_button(
+                        "⬇ Download",
+                        f,
+                        file_name=r["file_name"],
+                        key=f"dl_{r['id']}"
+                    )
+
+            with col2:
+                if st.button("🗑 Delete", key=f"del_ex_{r['id']}"):
+                    delete_exercise(r["id"], r["file_path"])
+                    st.success("Deleted")
+                    st.rerun()
 
 # -----------------------------
 # PDF GENERATION (LINKEDIN READY)
