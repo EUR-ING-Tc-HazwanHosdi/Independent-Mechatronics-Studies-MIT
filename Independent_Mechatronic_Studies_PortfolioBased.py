@@ -1,4 +1,4 @@
-# AIMecha Study Tracker v2 (Multi-Notes + Multi-Journal System)
+# AIMecha Study OS v3 — Notes + Journal + Exercise PDF System
 
 import streamlit as st
 import pandas as pd
@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 
 # -----------------------------
-# CONFIG (MUST BE FIRST)
+# CONFIG
 # -----------------------------
 st.set_page_config(
     page_title="AIMecha Study OS",
@@ -18,10 +18,10 @@ DB_NAME = "study_tracker.db"
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-st.title("⚙️ AIMecha Study OS — AI Mechatronics Tracker")
+st.title("⚙️ AIMecha Study OS — Mechatronics + AI Learning Tracker")
 
 # -----------------------------
-# DATABASE
+# DB
 # -----------------------------
 def conn():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -30,6 +30,7 @@ def conn():
 def init_db():
     c = conn().cursor()
 
+    # COURSES
     c.execute("""
     CREATE TABLE IF NOT EXISTS courses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +40,7 @@ def init_db():
     )
     """)
 
-    # MULTI NOTES TABLE
+    # NOTES
     c.execute("""
     CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,12 +50,25 @@ def init_db():
     )
     """)
 
-    # MULTI JOURNAL TABLE
+    # JOURNAL
     c.execute("""
     CREATE TABLE IF NOT EXISTS journal (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
         entry TEXT,
+        created_at TEXT
+    )
+    """)
+
+    # EXERCISES / ASSIGNMENTS / QUIZ FILES
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS exercises (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER,
+        course_name TEXT,
+        file_name TEXT,
+        file_path TEXT,
+        file_type TEXT,
         created_at TEXT
     )
     """)
@@ -83,7 +97,7 @@ def update_course(cid, done):
     conn().commit()
 
 # -----------------------------
-# NOTES SYSTEM (MULTI ENTRY)
+# NOTES
 # -----------------------------
 def add_note(course_id, note):
     c = conn().cursor()
@@ -102,7 +116,7 @@ def get_notes(course_id):
     )
 
 # -----------------------------
-# JOURNAL SYSTEM (MULTI ENTRY)
+# JOURNAL
 # -----------------------------
 def add_journal(title, entry):
     c = conn().cursor()
@@ -120,15 +134,55 @@ def get_journal():
     )
 
 # -----------------------------
-# NAVIGATION
+# EXERCISES / PDF UPLOAD SYSTEM
+# -----------------------------
+def save_exercise(course_id, course_name, uploaded_file):
+    file_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
+
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    file_type = uploaded_file.type
+
+    c = conn().cursor()
+    c.execute("""
+        INSERT INTO exercises 
+        (course_id, course_name, file_name, file_path, file_type, created_at)
+        VALUES (?,?,?,?,?,?)
+    """, (
+        course_id,
+        course_name,
+        uploaded_file.name,
+        file_path,
+        file_type,
+        datetime.now().isoformat()
+    ))
+
+    conn().commit()
+
+
+def get_exercises(course_id=None):
+    if course_id:
+        return pd.read_sql_query(
+            "SELECT * FROM exercises WHERE course_id=? ORDER BY created_at DESC",
+            conn(),
+            params=(course_id,)
+        )
+    return pd.read_sql_query(
+        "SELECT * FROM exercises ORDER BY created_at DESC",
+        conn()
+    )
+
+# -----------------------------
+# UI NAVIGATION
 # -----------------------------
 menu = st.sidebar.radio(
     "Navigation",
-    ["Courses", "Add Course", "Journal", "Analytics"]
+    ["Courses", "Add Course", "Journal", "Exercises", "Analytics"]
 )
 
 # =========================================================
-# COURSES + NOTES (MULTI BAR SYSTEM)
+# COURSES + NOTES
 # =========================================================
 if menu == "Courses":
     st.subheader("📚 Courses + Notes System")
@@ -143,7 +197,6 @@ if menu == "Courses":
             st.markdown("---")
             st.write(f"## {row['course_name']} ({row['category']})")
 
-            # completion
             done = st.checkbox(
                 "Completed",
                 value=bool(row["completed"]),
@@ -151,50 +204,39 @@ if menu == "Courses":
             )
             update_course(row["id"], int(done))
 
-            # -------------------------
-            # MULTI NOTE INPUT BAR
-            # -------------------------
-            st.write("### 📝 Add Notes (multi-paragraph supported)")
-
-            note_input = st.text_area(
-                "Write new note",
+            # NOTES
+            st.write("### 📝 Add Notes")
+            note = st.text_area(
+                "Write note (multi-paragraph supported)",
                 key=f"note_{row['id']}",
                 height=120
             )
 
-            if st.button("➕ Save Note", key=f"save_note_{row['id']}"):
-                if note_input.strip():
-                    add_note(row["id"], note_input)
-                    st.success("Note saved")
+            if st.button("Save Note", key=f"save_note_{row['id']}"):
+                if note.strip():
+                    add_note(row["id"], note)
+                    st.success("Saved")
 
-            # -------------------------
-            # DISPLAY ALL NOTES
-            # -------------------------
             notes = get_notes(row["id"])
 
-            st.write("### 📒 Saved Notes")
+            st.write("### 📒 Notes History")
 
-            if notes.empty:
-                st.info("No notes yet.")
-            else:
-                for _, n in notes.iterrows():
-                    st.markdown(
-                        f"""
-                        <div style="
-                            padding:12px;
-                            border-radius:12px;
-                            background:#111;
-                            margin-bottom:10px;
-                            border:1px solid #333;
-                        ">
-                        <b>Note:</b><br>
-                        {n['note'].replace('\n','<br>')}
-                        <br><br>
-                        <small>{n['created_at']}</small>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+            for _, n in notes.iterrows():
+                st.markdown(
+                    f"""
+                    <div style="
+                        padding:10px;
+                        border-radius:10px;
+                        background:#111;
+                        margin-bottom:8px;
+                        border:1px solid #333;
+                    ">
+                    {n['note'].replace('\n','<br>')}
+                    <br><small>{n['created_at']}</small>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 # =========================================================
 # ADD COURSE
@@ -204,7 +246,7 @@ elif menu == "Add Course":
 
     cat = st.selectbox(
         "Category",
-        ["Math","Physics","Programming","AI","Robotics","Electronics"]
+        ["Math","Physics","Programming","AI","Robotics","Electronics","Control Systems"]
     )
 
     name = st.text_input("Course Name")
@@ -215,55 +257,106 @@ elif menu == "Add Course":
             st.success("Added")
 
 # =========================================================
-# JOURNAL (MULTI ENTRY SYSTEM UPGRADED)
+# JOURNAL (MULTI ENTRY)
 # =========================================================
 elif menu == "Journal":
-    st.subheader("🧠 Engineering Journal (Multi Entry System)")
+    st.subheader("🧠 Engineering Journal")
 
-    # -------------------------
-    # NEW JOURNAL INPUT BAR
-    # -------------------------
-    title = st.text_input("Journal Title")
+    title = st.text_input("Title")
 
     entry = st.text_area(
-        "Write your journal entry (multi-paragraph supported)",
+        "Write journal entry (multi-paragraph supported)",
         height=150
     )
 
-    if st.button("➕ Save Journal Entry"):
+    if st.button("Save Journal"):
         if entry.strip():
             add_journal(title if title else "Untitled", entry)
-            st.success("Journal saved")
+            st.success("Saved")
 
     st.divider()
 
-    # -------------------------
-    # DISPLAY JOURNAL HISTORY
-    # -------------------------
     df = get_journal()
 
     st.write("## 📖 Journal History")
 
+    for _, j in df.iterrows():
+        st.markdown(
+            f"""
+            <div style="
+                padding:10px;
+                border-radius:10px;
+                background:#0f0f0f;
+                margin-bottom:8px;
+                border:1px solid #333;
+            ">
+            <h4>{j['title']}</h4>
+            <p>{j['entry'].replace('\n','<br>')}</p>
+            <small>{j['created_at']}</small>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# =========================================================
+# EXERCISES / ASSIGNMENTS / QUIZZES (NEW)
+# =========================================================
+elif menu == "Exercises":
+    st.subheader("📤 Exercises / Assignments / Quizzes Upload System")
+
+    df = get_courses()
+
     if df.empty:
-        st.info("No journal entries yet.")
+        st.warning("Add courses first.")
     else:
-        for _, j in df.iterrows():
+        course_name = st.selectbox("Select Course", df["course_name"].tolist())
+        course_id = df[df["course_name"] == course_name]["id"].values[0]
+
+        uploaded_file = st.file_uploader(
+            "Upload Exercise / Assignment / Quiz (PDF, image, code)",
+            type=["pdf","png","jpg","jpeg","py","ipynb","docx"]
+        )
+
+        if uploaded_file:
+            if st.button("Save File"):
+                save_exercise(course_id, course_name, uploaded_file)
+                st.success("File saved")
+
+    st.divider()
+
+    st.write("## 📁 Uploaded Files")
+
+    ex = get_exercises()
+
+    if ex.empty:
+        st.info("No uploads yet.")
+    else:
+        for _, row in ex.iterrows():
+
             st.markdown(
                 f"""
                 <div style="
-                    padding:12px;
-                    border-radius:12px;
-                    background:#0f0f0f;
-                    margin-bottom:10px;
+                    padding:10px;
+                    border-radius:10px;
+                    background:#111;
+                    margin-bottom:8px;
                     border:1px solid #333;
                 ">
-                <h4>{j['title']}</h4>
-                <p>{j['entry'].replace('\n','<br>')}</p>
-                <small>{j['created_at']}</small>
+                <b>{row['course_name']}</b><br>
+                {row['file_name']}<br>
+                <small>{row['created_at']}</small>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
+            with open(row["file_path"], "rb") as f:
+                st.download_button(
+                    "Download",
+                    f,
+                    file_name=row["file_name"],
+                    key=f"dl_{row['id']}"
+                )
 
 # =========================================================
 # ANALYTICS
