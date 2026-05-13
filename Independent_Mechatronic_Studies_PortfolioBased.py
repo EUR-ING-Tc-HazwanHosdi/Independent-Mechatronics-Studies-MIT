@@ -12,7 +12,7 @@ import os
 # -----------------------------
 DB_NAME = "study_tracker.db"
 UPLOAD_FOLDER = "uploads"
-LOGO_PATH = r"C:\Users\Admin\Documents\AIMECHA.png"  # <-- Put your AIMecha logo image here
+LOGO_PATH = "AIMECHA.png"  # <-- Put your AIMecha logo image here
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
