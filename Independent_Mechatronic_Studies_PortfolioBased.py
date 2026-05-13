@@ -1,31 +1,37 @@
 import streamlit as st
-import pandas as pd
 import sqlite3
+import pandas as pd
 from datetime import datetime
 import os
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 # -----------------------------
-# CONFIG (MUST BE FIRST)
+# CONFIG
 # -----------------------------
-st.set_page_config(page_title="AIMecha Study OS", layout="wide")
+st.set_page_config(page_title="AIMecha OS", layout="wide")
 
 DB_NAME = "study_tracker.db"
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-st.title("⚙️ AIMecha Study OS — Mechatronics + AI Learning Tracker")
+st.title("⚙️ AIMecha Study OS — AI Mechatronics Tracker")
 
 # -----------------------------
-# DB CONNECTION
+# SAFE DATABASE CONNECTION (FIXED)
 # -----------------------------
-def conn():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+@st.cache_resource
+def get_conn():
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    return conn
+
+conn = get_conn()
 
 # -----------------------------
-# SAFE INIT DB (NO BREAKAGE EVER)
+# INIT DATABASE (SAFE)
 # -----------------------------
 def init_db():
-    c = conn().cursor()
+    c = conn.cursor()
 
     c.execute("""
     CREATE TABLE IF NOT EXISTS courses (
@@ -61,12 +67,11 @@ def init_db():
         course_name TEXT,
         file_name TEXT,
         file_path TEXT,
-        file_type TEXT,
         created_at TEXT
     )
     """)
 
-    conn().commit()
+    conn.commit()
 
 init_db()
 
@@ -74,171 +79,166 @@ init_db()
 # COURSES
 # -----------------------------
 def get_courses():
-    return pd.read_sql_query("SELECT * FROM courses", conn())
+    return pd.read_sql_query("SELECT * FROM courses", conn)
 
 def add_course(cat, name):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute("INSERT INTO courses (category, course_name) VALUES (?,?)", (cat, name))
-    conn().commit()
+    conn.commit()
 
 def update_course(cid, done):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute("UPDATE courses SET completed=? WHERE id=?", (done, cid))
-    conn().commit()
+    conn.commit()
 
 # -----------------------------
 # NOTES
 # -----------------------------
 def add_note(course_id, note):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute(
         "INSERT INTO notes (course_id, note, created_at) VALUES (?,?,?)",
         (course_id, note, datetime.now().isoformat())
     )
-    conn().commit()
+    conn.commit()
 
 def get_notes(course_id):
     return pd.read_sql_query(
         "SELECT * FROM notes WHERE course_id=? ORDER BY created_at DESC",
-        conn(),
+        conn,
         params=(course_id,)
     )
 
 def delete_note(note_id):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute("DELETE FROM notes WHERE id=?", (note_id,))
-    conn().commit()
+    conn.commit()
 
 # -----------------------------
 # JOURNAL
 # -----------------------------
 def add_journal(title, entry):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute(
         "INSERT INTO journal (title, entry, created_at) VALUES (?,?,?)",
         (title, entry, datetime.now().isoformat())
     )
-    conn().commit()
+    conn.commit()
 
 def get_journal():
     return pd.read_sql_query(
         "SELECT * FROM journal ORDER BY created_at DESC",
-        conn()
+        conn
     )
 
 def delete_journal(jid):
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute("DELETE FROM journal WHERE id=?", (jid,))
-    conn().commit()
+    conn.commit()
 
 # -----------------------------
 # EXERCISES
 # -----------------------------
-def save_exercise(course_id, course_name, uploaded_file):
-    file_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
+def save_exercise(course_id, course_name, file):
+    path = os.path.join(UPLOAD_FOLDER, file.name)
 
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    with open(path, "wb") as f:
+        f.write(file.getbuffer())
 
-    c = conn().cursor()
+    c = conn.cursor()
     c.execute("""
-        INSERT INTO exercises 
-        (course_id, course_name, file_name, file_path, file_type, created_at)
-        VALUES (?,?,?,?,?,?)
-    """, (
-        course_id,
-        course_name,
-        uploaded_file.name,
-        file_path,
-        uploaded_file.type,
-        datetime.now().isoformat()
-    ))
+        INSERT INTO exercises (course_id, course_name, file_name, file_path, created_at)
+        VALUES (?,?,?,?,?)
+    """, (course_id, course_name, file.name, path, datetime.now().isoformat()))
 
-    conn().commit()
+    conn.commit()
 
 def get_exercises():
-    return pd.read_sql_query(
-        "SELECT * FROM exercises ORDER BY created_at DESC",
-        conn()
-    )
+    return pd.read_sql_query("SELECT * FROM exercises ORDER BY created_at DESC", conn)
+
+# -----------------------------
+# PDF GENERATION (LINKEDIN READY)
+# -----------------------------
+def generate_pdf():
+    file_name = "AIMecha_Portfolio_Report.pdf"
+    doc = SimpleDocTemplate(file_name)
+
+    styles = getSampleStyleSheet()
+    content = []
+
+    content.append(Paragraph("AIMecha Learning Portfolio Report", styles["Title"]))
+    content.append(Spacer(1, 12))
+
+    # Courses
+    courses = get_courses()
+    content.append(Paragraph("Courses Progress", styles["Heading2"]))
+
+    for _, row in courses.iterrows():
+        text = f"{row['course_name']} ({row['category']}) - Completed: {row['completed']}"
+        content.append(Paragraph(text, styles["Normal"]))
+
+    content.append(Spacer(1, 12))
+
+    # Notes
+    content.append(Paragraph("Notes Summary", styles["Heading2"]))
+    notes = pd.read_sql_query("SELECT * FROM notes", conn)
+
+    for _, n in notes.iterrows():
+        text = f"{n['note'][:200]}..."
+        content.append(Paragraph(text, styles["Normal"]))
+
+    doc.build(content)
+
+    return file_name
 
 # -----------------------------
 # NAVIGATION
 # -----------------------------
 menu = st.sidebar.radio(
     "Navigation",
-    ["Courses", "Add Course", "Journal", "Exercises", "Analytics"]
+    ["Courses", "Add Course", "Journal", "Exercises", "Analytics", "Export PDF"]
 )
 
 # =========================================================
 # COURSES + NOTES
 # =========================================================
 if menu == "Courses":
-    st.subheader("📚 Courses + Notes System")
+    st.subheader("📚 Courses + Notes")
 
     df = get_courses()
 
-    if df.empty:
-        st.warning("No courses yet.")
-    else:
-        for _, row in df.iterrows():
+    for _, row in df.iterrows():
 
-            st.markdown("---")
-            st.write(f"## {row['course_name']} ({row['category']})")
+        st.markdown("---")
+        st.write(f"## {row['course_name']} ({row['category']})")
 
-            done = st.checkbox(
-                "Completed",
-                value=bool(row["completed"]),
-                key=f"done_{row['id']}"
-            )
-            update_course(row["id"], int(done))
+        done = st.checkbox(
+            "Completed",
+            value=bool(row["completed"]),
+            key=f"c_{row['id']}"
+        )
+        update_course(row["id"], int(done))
 
-            # -------------------------
-            # ADD NOTE
-            # -------------------------
-            note = st.text_area(
-                "Write note (multi-paragraph supported)",
-                key=f"note_{row['id']}",
-                height=120
-            )
+        note = st.text_area("Add note", key=f"n_{row['id']}", height=120)
 
-            if st.button("➕ Save Note", key=f"save_{row['id']}"):
-                if note.strip():
-                    add_note(row["id"], note)
-                    st.success("Note saved")
+        if st.button("Save Note", key=f"s_{row['id']}"):
+            if note.strip():
+                add_note(row["id"], note)
+                st.rerun()
+
+        notes = get_notes(row["id"])
+
+        for _, n in notes.iterrows():
+            col1, col2 = st.columns([6,1])
+
+            with col1:
+                st.write(n["note"])
+                st.caption(n["created_at"])
+
+            with col2:
+                if st.button("🗑", key=f"d_{n['id']}"):
+                    delete_note(n["id"])
                     st.rerun()
-
-            # -------------------------
-            # NOTES HISTORY
-            # -------------------------
-            notes = get_notes(row["id"])
-
-            st.write("### 📒 Notes History")
-
-            for _, n in notes.iterrows():
-                col1, col2 = st.columns([6, 1])
-
-                with col1:
-                    st.markdown(
-                        f"""
-                        <div style="
-                            padding:10px;
-                            border-radius:10px;
-                            background:#111;
-                            margin-bottom:8px;
-                            border:1px solid #333;
-                        ">
-                        {n['note'].replace('\n','<br>')}
-                        <br><small>{n['created_at']}</small>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-                with col2:
-                    if st.button("🗑", key=f"del_note_{n['id']}"):
-                        delete_note(n["id"])
-                        st.rerun()
 
 # =========================================================
 # ADD COURSE
@@ -246,67 +246,39 @@ if menu == "Courses":
 elif menu == "Add Course":
     st.subheader("➕ Add Course")
 
-    cat = st.selectbox(
-        "Category",
-        ["Math","Physics","Programming","AI","Robotics","Electronics","Control Systems"]
-    )
-
+    cat = st.selectbox("Category", ["AI","Robotics","Math","Physics","Programming"])
     name = st.text_input("Course Name")
 
-    if st.button("Add Course"):
-        if name.strip():
-            add_course(cat, name)
-            st.success("Course added")
-            st.rerun()
+    if st.button("Add"):
+        add_course(cat, name)
+        st.success("Added")
+        st.rerun()
 
 # =========================================================
 # JOURNAL
 # =========================================================
 elif menu == "Journal":
-    st.subheader("🧠 Engineering Journal")
+    st.subheader("🧠 Journal")
 
     title = st.text_input("Title")
+    entry = st.text_area("Write journal", height=150)
 
-    entry = st.text_area(
-        "Write journal entry (multi-paragraph supported)",
-        height=150
-    )
-
-    if st.button("➕ Save Journal"):
-        if entry.strip():
-            add_journal(title if title else "Untitled", entry)
-            st.success("Saved")
-            st.rerun()
-
-    st.divider()
+    if st.button("Save Journal"):
+        add_journal(title, entry)
+        st.rerun()
 
     df = get_journal()
-
-    st.write("## 📖 Journal History")
 
     for _, j in df.iterrows():
         col1, col2 = st.columns([6,1])
 
         with col1:
-            st.markdown(
-                f"""
-                <div style="
-                    padding:10px;
-                    border-radius:10px;
-                    background:#0f0f0f;
-                    margin-bottom:8px;
-                    border:1px solid #333;
-                ">
-                <h4>{j['title']}</h4>
-                <p>{j['entry'].replace('\n','<br>')}</p>
-                <small>{j['created_at']}</small>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.write(f"### {j['title']}")
+            st.write(j["entry"])
+            st.caption(j["created_at"])
 
         with col2:
-            if st.button("🗑", key=f"del_j_{j['id']}"):
+            if st.button("🗑", key=f"j_{j['id']}"):
                 delete_journal(j["id"])
                 st.rerun()
 
@@ -314,71 +286,48 @@ elif menu == "Journal":
 # EXERCISES
 # =========================================================
 elif menu == "Exercises":
-    st.subheader("📤 Exercises / Assignments / Quizzes")
+    st.subheader("📤 Upload Exercises")
 
-    df = get_courses()
+    courses = get_courses()
 
-    if df.empty:
-        st.warning("Add courses first.")
-    else:
-        course_name = st.selectbox("Select Course", df["course_name"].tolist())
-        course_id = df[df["course_name"] == course_name]["id"].values[0]
+    if not courses.empty:
+        course = st.selectbox("Course", courses["course_name"])
+        cid = courses[courses["course_name"] == course]["id"].values[0]
 
-        uploaded_file = st.file_uploader(
-            "Upload file (PDF, image, code)",
-            type=["pdf","png","jpg","jpeg","py","ipynb","docx"]
-        )
+        file = st.file_uploader("Upload PDF / file")
 
-        if uploaded_file:
-            if st.button("Save File"):
-                save_exercise(course_id, course_name, uploaded_file)
-                st.success("Uploaded")
-                st.rerun()
+        if file and st.button("Save"):
+            save_exercise(cid, course, file)
+            st.rerun()
 
     st.divider()
 
-    st.write("## 📁 Uploaded Files")
-
     ex = get_exercises()
 
-    if ex.empty:
-        st.info("No files uploaded yet.")
-    else:
-        for _, row in ex.iterrows():
+    for _, r in ex.iterrows():
+        st.write(f"📘 {r['course_name']} - {r['file_name']}")
 
-            st.markdown(
-                f"""
-                <div style="
-                    padding:10px;
-                    border-radius:10px;
-                    background:#111;
-                    margin-bottom:8px;
-                    border:1px solid #333;
-                ">
-                <b>{row['course_name']}</b><br>
-                {row['file_name']}<br>
-                <small>{row['created_at']}</small>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            with open(row["file_path"], "rb") as f:
-                st.download_button(
-                    "Download",
-                    f,
-                    file_name=row["file_name"],
-                    key=f"dl_{row['id']}"
-                )
+        with open(r["file_path"], "rb") as f:
+            st.download_button("Download", f, file_name=r["file_name"])
 
 # =========================================================
 # ANALYTICS
 # =========================================================
 elif menu == "Analytics":
-    st.subheader("📊 Analytics")
+    st.subheader("📊 Progress Analytics")
 
     df = get_courses()
 
     if not df.empty:
         st.bar_chart(df.groupby("category")["completed"].mean() * 100)
-        st.dataframe(df)
+
+# =========================================================
+# EXPORT PDF (LINKEDIN READY)
+# =========================================================
+elif menu == "Export PDF":
+    st.subheader("📄 Generate LinkedIn Portfolio PDF")
+
+    if st.button("Generate PDF Report"):
+        file = generate_pdf()
+        with open(file, "rb") as f:
+            st.download_button("Download Portfolio PDF", f, file_name=file)
