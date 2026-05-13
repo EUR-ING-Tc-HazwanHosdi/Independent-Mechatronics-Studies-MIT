@@ -16,7 +16,7 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
-    page_title="Industrial AI Mechatronics Tracker",
+    page_title="Independent Studies / OpenCourseWare (Non-Degree), Mechatronics Engineering, Artificial Intelligence & Automation",
     layout="wide"
 )
 
