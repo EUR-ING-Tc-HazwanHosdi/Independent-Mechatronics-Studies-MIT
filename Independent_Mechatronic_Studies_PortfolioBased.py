@@ -139,6 +139,17 @@ def delete_journal(jid):
 # -----------------------------
 # EXERCISES
 # -----------------------------
+def delete_exercise(ex_id, file_path):
+    c = conn.cursor()
+    
+    # delete from DB
+    c.execute("DELETE FROM exercises WHERE id=?", (ex_id,))
+    
+    # delete file from storage
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    conn.commit()
 elif menu == "Exercises":
     st.subheader("📤 Upload Exercises")
 
