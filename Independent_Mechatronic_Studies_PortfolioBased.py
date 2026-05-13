@@ -14,6 +14,7 @@ DB_NAME = "study_tracker.db"
 UPLOAD_FOLDER = "uploads"
 LOGO_PATH = "AIMECHA.png"  # <-- Put your AIMecha logo image here
 
+st.sidebar.image(LOGO_PATH, width=120)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
