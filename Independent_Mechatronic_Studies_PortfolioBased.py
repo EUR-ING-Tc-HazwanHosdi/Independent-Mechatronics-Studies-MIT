@@ -13,12 +13,22 @@ st.set_page_config(page_title="AIMecha Study OS", layout="wide")
 
 DB_NAME = "study_tracker.db"
 UPLOAD_FOLDER = "uploads"
+LOGO_PATH = "AIMECHA.png"
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# -----------------------------
+# LOGO (SAFE LOAD)
+# -----------------------------
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, width=180)
+else:
+    st.sidebar.warning("Logo not found: AIMECHA.png")
 
 st.title("⚙️ AIMecha Study OS — Mechatronics AI Tracker")
 
 # -----------------------------
-# SAFE DB CONNECTION
+# DB CONNECTION (SAFE)
 # -----------------------------
 @st.cache_resource
 def get_conn():
@@ -152,10 +162,7 @@ def save_exercise(course_id, course_name, file):
     conn.commit()
 
 def get_exercises():
-    return pd.read_sql_query(
-        "SELECT * FROM exercises ORDER BY created_at DESC",
-        conn
-    )
+    return pd.read_sql_query("SELECT * FROM exercises ORDER BY created_at DESC", conn)
 
 def delete_exercise(ex_id, path):
     conn.execute("DELETE FROM exercises WHERE id=?", (ex_id,))
@@ -173,7 +180,7 @@ def generate_pdf():
 
     content = []
 
-    content.append(Paragraph("AIMecha Study Portfolio", styles["Title"]))
+    content.append(Paragraph("AIMecha Engineering Portfolio", styles["Title"]))
     content.append(Spacer(1, 12))
 
     courses = get_courses()
@@ -181,15 +188,15 @@ def generate_pdf():
     content.append(Paragraph("Courses Progress", styles["Heading2"]))
     for _, c in courses.iterrows():
         content.append(Paragraph(
-            f"{c['course_name']} ({c['category']}) - {c['completed']}",
+            f"{c['course_name']} ({c['category']}) - Completed: {c['completed']}",
             styles["Normal"]
         ))
 
     content.append(Spacer(1, 12))
 
     notes = pd.read_sql_query("SELECT * FROM notes", conn)
-    content.append(Paragraph("Notes Summary", styles["Heading2"]))
 
+    content.append(Paragraph("Notes Summary", styles["Heading2"]))
     for _, n in notes.iterrows():
         content.append(Paragraph(n["note"][:200], styles["Normal"]))
 
@@ -208,13 +215,14 @@ menu = st.sidebar.radio(
 # COURSES
 # =========================================================
 if menu == "Courses":
-    st.subheader("📚 Courses + Notes")
+    st.subheader("📚 Courses + Notes System")
 
     df = get_courses()
 
     for _, row in df.iterrows():
 
         st.markdown("---")
+
         st.write(f"## {row['course_name']} ({row['category']})")
 
         done = st.checkbox(
@@ -251,7 +259,7 @@ if menu == "Courses":
 elif menu == "Add Course":
     st.subheader("➕ Add Course")
 
-    cat = st.selectbox("Category", ["AI","Robotics","Programming","Math"])
+    cat = st.selectbox("Category", ["AI","Robotics","Programming","Math","Control Systems"])
     name = st.text_input("Course Name")
 
     if st.button("Add"):
@@ -263,12 +271,12 @@ elif menu == "Add Course":
 # JOURNAL
 # =========================================================
 elif menu == "Journal":
-    st.subheader("🧠 Journal")
+    st.subheader("🧠 Engineering Journal")
 
     title = st.text_input("Title")
-    entry = st.text_area("Write journal", height=150)
+    entry = st.text_area("Write journal entry", height=150)
 
-    if st.button("Save"):
+    if st.button("Save Journal"):
         add_journal(title, entry)
         st.rerun()
 
@@ -291,7 +299,7 @@ elif menu == "Journal":
 # EXERCISES
 # =========================================================
 elif menu == "Exercises":
-    st.subheader("📤 Exercises Upload")
+    st.subheader("📤 Upload Exercises / Assignments")
 
     courses = get_courses()
 
@@ -299,7 +307,7 @@ elif menu == "Exercises":
         course = st.selectbox("Course", courses["course_name"])
         cid = courses[courses["course_name"] == course]["id"].values[0]
 
-        file = st.file_uploader("Upload file")
+        file = st.file_uploader("Upload file (PDF, image, code)")
 
         if file and st.button("Save"):
             save_exercise(cid, course, file)
@@ -326,7 +334,8 @@ elif menu == "Exercises":
 # ANALYTICS
 # =========================================================
 elif menu == "Analytics":
-    st.subheader("📊 Progress")
+    st.subheader("📊 Progress Analytics")
+
     df = get_courses()
 
     if not df.empty:
