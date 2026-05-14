@@ -12,11 +12,10 @@ st.set_page_config(page_title="AIMecha Study OS", layout="wide")
 
 DB_NAME = "aimecha_study_os.db"
 LOGO_PATH = "AIMECHA.png"
+MIT_LOGO_PATH = "MIT-OCW.png"  # New logo path
 
 @st.cache_resource
 def get_conn():
-    # WAL mode and Synchronous Normal ensure the database doesn't corrupt 
-    # when the app goes to sleep or restarts.
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;") 
     conn.execute("PRAGMA synchronous=NORMAL;")
@@ -50,6 +49,12 @@ init_db()
 # CORE FUNCTIONS
 # =========================================================
 
+def delete_course_full(course_id):
+    conn.execute("DELETE FROM courses WHERE id=?", (course_id,))
+    conn.execute("DELETE FROM notes WHERE course_id=?", (course_id,))
+    conn.execute("DELETE FROM exercises WHERE course_id=?", (course_id,))
+    conn.commit()
+
 def save_exercise(course_id, course_name, uploaded_file):
     blob_data = uploaded_file.read()
     conn.execute("""INSERT INTO exercises (course_id, course_name, file_name, file_blob, created_at)
@@ -57,21 +62,28 @@ def save_exercise(course_id, course_name, uploaded_file):
                  (course_id, course_name, uploaded_file.name, blob_data, datetime.now().isoformat()))
     conn.commit()
 
-def restore_system(uploaded_db):
-    conn.close()
-    with open(DB_NAME, "wb") as f:
-        f.write(uploaded_db.getbuffer())
-    st.cache_resource.clear()
-    st.rerun()
-
 # =========================================================
 # SIDEBAR NAVIGATION
 # =========================================================
+
+# Display Main Logo
 if os.path.exists(LOGO_PATH):
-    st.sidebar.image(LOGO_PATH, width=250)
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
+
+# Display MIT-OCW Logo at the bottom of navigation
+st.sidebar.divider()
 
 menu = st.sidebar.radio("Navigation", 
-    ["Dashboard", "Courses", "Add Course", "Journal", "Exercises", "Professional CV", "System Recovery"])
+    ["Dashboard", "Courses", "Add Course", "Manage Courses", "Journal", "Exercises", "Professional CV", "System Recovery"])
+
+st.sidebar.spacer = st.sidebar.container() # Create space
+
+# MIT-OCW Integration in Sidebar
+st.sidebar.markdown("---")
+if os.path.exists(MIT_LOGO_PATH):
+    st.sidebar.image(MIT_LOGO_PATH, width=150)
+else:
+    st.sidebar.caption("🎓 MIT OpenCourseWare")
 
 # =========================================================
 # DASHBOARD
@@ -79,7 +91,6 @@ menu = st.sidebar.radio("Navigation",
 if menu == "Dashboard":
     st.title("⚙️ AIMecha Engineering Dashboard")
     df = pd.read_sql_query("SELECT * FROM courses", conn)
-    
     total = len(df)
     done = df["completed"].sum() if total > 0 else 0
     prog = (done / total) if total > 0 else 0
@@ -96,7 +107,6 @@ if menu == "Dashboard":
 elif menu == "Courses":
     st.subheader("📚 Learning Modules")
     df = pd.read_sql_query("SELECT * FROM courses", conn)
-    
     if df.empty:
         st.info("No courses found. Add your first module to begin.")
     else:
@@ -105,7 +115,6 @@ elif menu == "Courses":
                 completed = st.checkbox("Mark as Complete", value=bool(row["completed"]), key=f"c_{row['id']}")
                 conn.execute("UPDATE courses SET completed=? WHERE id=?", (int(completed), row['id']))
                 conn.commit()
-                
                 note = st.text_area("Live Notes", key=f"n_{row['id']}")
                 if st.button("Save Note", key=f"b_{row['id']}"):
                     conn.execute("INSERT INTO notes (course_id, note, created_at) VALUES (?, ?, ?)",
@@ -114,20 +123,36 @@ elif menu == "Courses":
                     st.success("Note saved.")
 
 # =========================================================
-# EXERCISES (BLOB ENGINE)
+# MANAGE COURSES
+# =========================================================
+elif menu == "Manage Courses":
+    st.subheader("🗑️ Course Inventory Management")
+    df = pd.read_sql_query("SELECT * FROM courses", conn)
+    
+    if df.empty:
+        st.warning("No courses to manage.")
+    else:
+        for _, row in df.iterrows():
+            col1, col2, col3 = st.columns([3, 2, 1])
+            col1.write(f"**{row['course_name']}**")
+            col2.write(f"_{row['category']}_")
+            if col3.button("Delete", key=f"del_{row['id']}", type="primary"):
+                delete_course_full(row['id'])
+                st.rerun()
+
+# =========================================================
+# EXERCISES
 # =========================================================
 elif menu == "Exercises":
     st.subheader("📤 Exercise Vault")
     courses = pd.read_sql_query("SELECT * FROM courses", conn)
-    
     if not courses.empty:
         sel = st.selectbox("Assign to Course", courses["course_name"])
         c_id = courses[courses["course_name"] == sel]["id"].values[0]
-        
-        up = st.file_uploader("Upload Engineering Artifact (No Limit)", type=None)
+        up = st.file_uploader("Upload Engineering Artifact", type=None)
         if up and st.button("Save to Database"):
             save_exercise(int(c_id), sel, up)
-            st.success("File stored safely in database.")
+            st.success("File stored safely.")
             st.rerun()
     
     st.divider()
@@ -142,57 +167,27 @@ elif menu == "Exercises":
 # =========================================================
 elif menu == "Professional CV":
     st.title("📄 Engineering Portfolio")
-    
-    st.markdown("""
-        <style>
-        .cv-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-left: 5px solid #00d4ff;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-        .header-box {
-            background: #111;
-            padding: 30px;
-            border-radius: 15px;
-            border: 1px solid #333;
-            margin-bottom: 25px;
-            text-align: center;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="header-box"><h1>MECHATRONICS AI PORTFOLIO</h1><p>Verified Technical Progress & Project Documentation</p></div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.subheader("🛠 Technical Mastery")
-        st.write("- Python Development\n- Data Science & Modeling\n- AI Architectures\n- Mechatronics Systems")
-
-    with col2:
-        st.subheader("🎓 Completed Certifications")
-        comp = pd.read_sql_query("SELECT * FROM courses WHERE completed = 1", conn)
-        if comp.empty:
-            st.warning("Mark courses as complete to show certifications here.")
-        else:
-            for _, row in comp.iterrows():
-                st.markdown(f'<div class="cv-card"><b>{row["course_name"]}</b><br><small>Verified Category: {row["category"]}</small></div>', unsafe_allow_html=True)
+    st.markdown("""<style>.cv-card { background: rgba(255, 255, 255, 0.05); border-left: 5px solid #00d4ff; padding: 20px; border-radius: 10px; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
+    comp = pd.read_sql_query("SELECT * FROM courses WHERE completed = 1", conn)
+    if comp.empty:
+        st.warning("Complete modules to populate your CV.")
+    else:
+        for _, row in comp.iterrows():
+            st.markdown(f'<div class="cv-card"><b>{row["course_name"]}</b><br><small>Category: {row["category"]}</small></div>', unsafe_allow_html=True)
 
 # =========================================================
 # SYSTEM RECOVERY
 # =========================================================
 elif menu == "System Recovery":
-    st.subheader("💾 System Maintenance")
-    
+    st.subheader("💾 Backup & Restore")
     with open(DB_NAME, "rb") as f:
-        st.download_button("📥 Download Database Backup", f, file_name="aimecha_os_backup.db", use_container_width=True)
-    
-    st.divider()
-    up_db = st.file_uploader("📤 Restore from Backup", type=["db"])
-    if up_db and st.button("⚠️ Confirm System Restore"):
-        restore_system(up_db)
+        st.download_button("📥 Download Backup", f, file_name="aimecha_backup.db", use_container_width=True)
+    up_db = st.file_uploader("Restore Database", type=["db"])
+    if up_db and st.button("⚠️ Confirm Restore"):
+        conn.close()
+        with open(DB_NAME, "wb") as f: f.write(up_db.getbuffer())
+        st.cache_resource.clear()
+        st.rerun()
 
 # =========================================================
 # ADD COURSE
@@ -219,5 +214,4 @@ elif menu == "Journal":
         conn.execute("INSERT INTO journal (title, entry, created_at) VALUES (?, ?, ?)",
                      (title or "Daily Log", entry, datetime.now().isoformat()))
         conn.commit()
-        st.success("Saved.")
         st.rerun()
