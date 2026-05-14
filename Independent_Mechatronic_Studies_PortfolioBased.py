@@ -5,14 +5,6 @@ from datetime import datetime
 import os
 import io
 
-# PDF Generation
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-
-# Charts
-import plotly.express as px
-import plotly.graph_objects as go
-
 # =========================================================
 # CONFIG & INITIALIZATION
 # =========================================================
@@ -21,9 +13,10 @@ st.set_page_config(page_title="AIMecha Study OS", layout="wide")
 DB_NAME = "aimecha_study_os.db"
 LOGO_PATH = "AIMECHA.png"
 
-# Database Connection with high-reliability settings
 @st.cache_resource
 def get_conn():
+    # WAL mode and Synchronous Normal ensure the database doesn't corrupt 
+    # when the app goes to sleep or restarts.
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;") 
     conn.execute("PRAGMA synchronous=NORMAL;")
@@ -54,19 +47,8 @@ def init_db():
 init_db()
 
 # =========================================================
-# HELPER FUNCTIONS
+# CORE FUNCTIONS
 # =========================================================
-
-def get_courses():
-    return pd.read_sql_query("SELECT * FROM courses", conn)
-
-def add_course(category, name):
-    conn.execute("INSERT INTO courses (category, course_name) VALUES (?, ?)", (category, name))
-    conn.commit()
-
-def update_course(course_id, completed):
-    conn.execute("UPDATE courses SET completed=? WHERE id=?", (completed, course_id))
-    conn.commit()
 
 def save_exercise(course_id, course_name, uploaded_file):
     blob_data = uploaded_file.read()
@@ -75,7 +57,7 @@ def save_exercise(course_id, course_name, uploaded_file):
                  (course_id, course_name, uploaded_file.name, blob_data, datetime.now().isoformat()))
     conn.commit()
 
-def restore_database(uploaded_db):
+def restore_system(uploaded_db):
     conn.close()
     with open(DB_NAME, "wb") as f:
         f.write(uploaded_db.getbuffer())
@@ -83,127 +65,159 @@ def restore_database(uploaded_db):
     st.rerun()
 
 # =========================================================
-# SIDEBAR / NAVIGATION
+# SIDEBAR NAVIGATION
 # =========================================================
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, width=250)
 
 menu = st.sidebar.radio("Navigation", 
-    ["Dashboard", "Courses", "Add Course", "Journal", "Exercises", "Competency Matrix", "System Recovery"])
+    ["Dashboard", "Courses", "Add Course", "Journal", "Exercises", "Professional CV", "System Recovery"])
 
 # =========================================================
 # DASHBOARD
 # =========================================================
 if menu == "Dashboard":
     st.title("⚙️ AIMecha Engineering Dashboard")
-    courses_df = get_courses()
+    df = pd.read_sql_query("SELECT * FROM courses", conn)
     
-    total_courses = len(courses_df)
-    completed_courses = courses_df["completed"].sum() if not courses_df.empty else 0
-    progress = (completed_courses / total_courses * 100) if total_courses > 0 else 0
+    total = len(df)
+    done = df["completed"].sum() if total > 0 else 0
+    prog = (done / total) if total > 0 else 0
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("📚 Total Courses", total_courses)
-    col2.metric("✅ Completed", completed_courses)
-    col3.metric("📈 Progress", f"{progress:.1f}%")
-    st.progress(progress / 100)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Modules", total)
+    c2.metric("Completed", done)
+    c3.metric("Progress", f"{prog*100:.1f}%")
+    st.progress(prog)
 
 # =========================================================
 # COURSES & NOTES
 # =========================================================
 elif menu == "Courses":
-    st.subheader("📚 Course Modules")
-    df = get_courses()
+    st.subheader("📚 Learning Modules")
+    df = pd.read_sql_query("SELECT * FROM courses", conn)
+    
     if df.empty:
-        st.info("No courses found. Go to 'Add Course' to start.")
+        st.info("No courses found. Add your first module to begin.")
     else:
         for _, row in df.iterrows():
             with st.expander(f"{row['course_name']} ({row['category']})"):
-                is_done = st.checkbox("Mark as Complete", value=bool(row["completed"]), key=f"check_{row['id']}")
-                update_course(row["id"], int(is_done))
+                completed = st.checkbox("Mark as Complete", value=bool(row["completed"]), key=f"c_{row['id']}")
+                conn.execute("UPDATE courses SET completed=? WHERE id=?", (int(completed), row['id']))
+                conn.commit()
                 
-                note_input = st.text_area("Session Notes", key=f"note_{row['id']}")
-                if st.button("Save Note", key=f"btn_{row['id']}"):
+                note = st.text_area("Live Notes", key=f"n_{row['id']}")
+                if st.button("Save Note", key=f"b_{row['id']}"):
                     conn.execute("INSERT INTO notes (course_id, note, created_at) VALUES (?, ?, ?)",
-                                 (row['id'], note_input, datetime.now().strftime("%Y-%m-%d %H:%M")))
+                                 (row['id'], note, datetime.now().strftime("%Y-%m-%d %H:%M")))
                     conn.commit()
-                    st.success("Note added!")
+                    st.success("Note saved.")
 
 # =========================================================
-# EXERCISES (BLOB STORAGE)
+# EXERCISES (BLOB ENGINE)
 # =========================================================
 elif menu == "Exercises":
     st.subheader("📤 Exercise Vault")
-    courses = get_courses()
+    courses = pd.read_sql_query("SELECT * FROM courses", conn)
     
     if not courses.empty:
-        selected_course = st.selectbox("Link to Course", courses["course_name"])
-        c_id = courses[courses["course_name"] == selected_course]["id"].values[0]
+        sel = st.selectbox("Assign to Course", courses["course_name"])
+        c_id = courses[courses["course_name"] == sel]["id"].values[0]
         
-        up_file = st.file_uploader("Upload Engineering File", type=None) # All types allowed
-        if up_file and st.button("Commit to Database"):
-            save_exercise(c_id, selected_course, up_file)
-            st.success(f"File '{up_file.name}' saved inside database.")
+        up = st.file_uploader("Upload Engineering Artifact (No Limit)", type=None)
+        if up and st.button("Save to Database"):
+            save_exercise(int(c_id), sel, up)
+            st.success("File stored safely in database.")
+            st.rerun()
     
     st.divider()
-    ex_df = pd.read_sql_query("SELECT id, course_name, file_name, file_blob FROM exercises", conn)
-    for _, ex in ex_df.iterrows():
-        c1, c2 = st.columns([5, 1])
-        c1.write(f"📁 {ex['file_name']} ({ex['course_name']})")
-        c2.download_button("Download", data=ex['file_blob'], file_name=ex['file_name'], key=f"dl_{ex['id']}")
+    exs = pd.read_sql_query("SELECT id, course_name, file_name, file_blob FROM exercises", conn)
+    for _, ex in exs.iterrows():
+        col1, col2 = st.columns([5,1])
+        col1.write(f"📁 **{ex['file_name']}** ({ex['course_name']})")
+        col2.download_button("Download", data=ex['file_blob'], file_name=ex['file_name'], key=f"dl_{ex['id']}")
 
 # =========================================================
-# COMPETENCY MATRIX
+# PROFESSIONAL CV
 # =========================================================
-elif menu == "Competency Matrix":
-    st.subheader("🧠 Skills Radar")
-    # Example hardcoded data - you can later link this to course counts
-    skills = {"Domain": ["Python", "ML", "CAD", "Robotics", "Control"], "Level": [85, 60, 75, 50, 70]}
-    fig = go.Figure(data=go.Scatterpolar(r=skills['Level'], theta=skills['Domain'], fill='toself'))
-    st.plotly_chart(fig)
+elif menu == "Professional CV":
+    st.title("📄 Engineering Portfolio")
+    
+    st.markdown("""
+        <style>
+        .cv-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-left: 5px solid #00d4ff;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .header-box {
+            background: #111;
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid #333;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="header-box"><h1>MECHATRONICS AI PORTFOLIO</h1><p>Verified Technical Progress & Project Documentation</p></div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.subheader("🛠 Technical Mastery")
+        st.write("- Python Development\n- Data Science & Modeling\n- AI Architectures\n- Mechatronics Systems")
+
+    with col2:
+        st.subheader("🎓 Completed Certifications")
+        comp = pd.read_sql_query("SELECT * FROM courses WHERE completed = 1", conn)
+        if comp.empty:
+            st.warning("Mark courses as complete to show certifications here.")
+        else:
+            for _, row in comp.iterrows():
+                st.markdown(f'<div class="cv-card"><b>{row["course_name"]}</b><br><small>Verified Category: {row["category"]}</small></div>', unsafe_allow_html=True)
 
 # =========================================================
-# SYSTEM RECOVERY (BACKUP & RESTORE)
+# SYSTEM RECOVERY
 # =========================================================
 elif menu == "System Recovery":
     st.subheader("💾 System Maintenance")
     
-    # Backup
     with open(DB_NAME, "rb") as f:
-        st.download_button(
-            label="📥 Download Full OS Backup (.db)",
-            data=f,
-            file_name=f"AIMecha_Backup_{datetime.now().strftime('%Y%m%d')}.db",
-            mime="application/x-sqlite3",
-            use_container_width=True
-        )
+        st.download_button("📥 Download Database Backup", f, file_name="aimecha_os_backup.db", use_container_width=True)
     
     st.divider()
-    
-    # Restore
-    st.warning("Overwriting the system will delete all current data.")
-    restore_file = st.file_uploader("Upload Backup File (.db)", type=["db"])
-    if restore_file and st.button("⚠️ Confirm System Restore"):
-        restore_database(restore_file)
+    up_db = st.file_uploader("📤 Restore from Backup", type=["db"])
+    if up_db and st.button("⚠️ Confirm System Restore"):
+        restore_system(up_db)
 
 # =========================================================
 # ADD COURSE
 # =========================================================
 elif menu == "Add Course":
     st.subheader("➕ Create New Module")
-    cat = st.selectbox("Category", ["AI", "Robotics", "Control", "Electronics", "Math"])
-    name = st.text_input("Course Name")
-    if st.button("Add Course") and name:
-        add_course(cat, name)
-        st.success("Module added!")
-        st.rerun()
+    with st.form("course_form"):
+        cat = st.selectbox("Category", ["AI", "Programming", "Robotics", "Control", "Electronics"])
+        name = st.text_input("Course Name")
+        if st.form_submit_button("Add Course") and name:
+            conn.execute("INSERT INTO courses (category, course_name) VALUES (?, ?)", (cat, name))
+            conn.commit()
+            st.success("Course Added!")
+            st.rerun()
 
+# =========================================================
+# JOURNAL
+# =========================================================
 elif menu == "Journal":
     st.subheader("📓 Engineering Journal")
     title = st.text_input("Title")
-    entry = st.text_area("Reflection")
+    entry = st.text_area("Entry")
     if st.button("Save Entry") and entry:
         conn.execute("INSERT INTO journal (title, entry, created_at) VALUES (?, ?, ?)",
-                     (title or "Untitled", entry, datetime.now().isoformat()))
+                     (title or "Daily Log", entry, datetime.now().isoformat()))
         conn.commit()
+        st.success("Saved.")
         st.rerun()
