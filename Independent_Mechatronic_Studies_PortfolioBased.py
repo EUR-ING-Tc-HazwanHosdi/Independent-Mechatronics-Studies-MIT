@@ -436,43 +436,47 @@ if menu == "Dashboard":
                 pdf_name = st.text_input("Assignment Metric Name", placeholder="e.g., Verified Proof Set", key="pdf_name_in")
                 pdf_file = st.file_uploader("Upload PDF Document Binary", type=["pdf"], key="pdf_file_drop")
                 
-                if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
-                    if pdf_file is not None and pdf_name:
-                        try:
-    pdf_bytes = pdf_file.getvalue()
+             if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
 
-    if len(pdf_bytes) == 0:
-        st.error("Uploaded PDF is empty.")
-    else:
-        with conn:
-            conn.execute("""
-                INSERT INTO assignment_logs (
-                    date_completed,
-                    course_name,
-                    assignment_name,
-                    pdf_blob
+    if pdf_file is not None and pdf_name:
+
+        try:
+            pdf_bytes = pdf_file.getvalue()
+
+            if len(pdf_bytes) == 0:
+                st.error("Uploaded PDF is empty.")
+
+            else:
+                with conn:
+                    conn.execute("""
+                        INSERT INTO assignment_logs (
+                            date_completed,
+                            course_name,
+                            assignment_name,
+                            pdf_blob
+                        )
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        pdf_date.strftime("%Y-%m-%d"),
+                        pdf_course,
+                        pdf_name,
+                        sqlite3.Binary(pdf_bytes)
+                    ))
+
+                conn.commit()
+
+                st.success(
+                    f"PDF stored successfully "
+                    f"({len(pdf_bytes)/1024:.2f} KB)"
                 )
-                VALUES (?, ?, ?, ?)
-            """, (
-                pdf_date.strftime("%Y-%m-%d"),
-                pdf_course,
-                pdf_name,
-                sqlite3.Binary(pdf_bytes)
-            ))
 
-        conn.commit()
+                st.rerun()
 
-        st.success(
-            f"PDF stored successfully "
-            f"({len(pdf_bytes)/1024:.2f} KB)"
-        )
+        except Exception as e:
+            st.error(f"PDF storage failure: {e}")
 
-        st.rerun()
-
-except Exception as e:
-    st.error(f"PDF storage failure: {e}")
-                        st.success("PDF Encrypted and Stored in Repository.")
-                        st.rerun()
+    else:
+        st.error("Please upload a PDF and enter assignment name.")
 
     # 3. DISPLAY LAYER: Full-width registry layout placed out of columns to prevent squeezing layout cards
     st.markdown("### Master Coursework Submission Registry")
