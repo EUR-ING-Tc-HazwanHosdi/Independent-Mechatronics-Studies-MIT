@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Full Production Build (PDF & File Integration)
+# AIMecha Study OS - Full Production Build (PDF & Sketch Integrated)
 # =========================================================
 
 import streamlit as st
@@ -16,6 +16,7 @@ from streamlit_drawable_canvas import st_canvas
 # =========================================================
 # PAGE CONFIG
 # =========================================================
+
 st.set_page_config(
     page_title="AIMecha Study OS",
     page_icon="⚙️",
@@ -25,11 +26,15 @@ st.set_page_config(
 # =========================================================
 # FILES & CONSTANTS
 # =========================================================
+
 DB_NAME = "aimecha_study_os.db"
+LOGO_PATH = "AIMECHA.png"
+MIT_LOGO_PATH = "MIT-OCW.png"
 
 # =========================================================
 # CUSTOM CYBERPUNK THEMING ENGINE
 # =========================================================
+
 st.markdown("""
 <style>
 .stApp { background-color: #0b1120; color: white; }
@@ -54,6 +59,7 @@ div[data-testid="stMetric"] {
 # =========================================================
 # DATABASE ENGINE
 # =========================================================
+
 @st.cache_resource
 def get_conn():
     connection = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -66,13 +72,13 @@ conn = get_conn()
 def init_db():
     with conn:
         cursor = conn.cursor()
+        
         # Core Tables
         cursor.execute("CREATE TABLE IF NOT EXISTS courses (id INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT NOT NULL, course_name TEXT NOT NULL, completed INTEGER DEFAULT 0)")
         cursor.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id INTEGER, note TEXT, sketch_data TEXT, image_blob BLOB, created_at TEXT, updated_at TEXT, FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE)")
         cursor.execute("CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, entry TEXT, sketch_data TEXT, image_blob BLOB, created_at TEXT, updated_at TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY, name TEXT, bio TEXT, title TEXT)")
         
-        # Assignment Logs with PDF/File Support
+        # Assignment Logs with PDF Support
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignment_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -85,14 +91,15 @@ def init_db():
         )
         """)
 
-        # RUNTIME MIGRATION: Ensure file columns exist for existing databases
+        # Migration: Ensure existing DBs get the PDF columns
         try:
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN file_blob BLOB")
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN file_name TEXT")
         except sqlite3.OperationalError:
             pass # Columns already exist
 
-        # Seed Profile
+        # Profile
+        cursor.execute("CREATE TABLE IF NOT EXISTS profile (id INTEGER PRIMARY KEY, name TEXT, bio TEXT, title TEXT)")
         cursor.execute("SELECT COUNT(*) FROM profile WHERE id = 1")
         if cursor.fetchone()[0] == 0:
             cursor.execute("INSERT INTO profile (id, name, bio, title) VALUES (1, 'Engineer', 'Industrial AI & Mechatronics', 'Systems Developer')")
@@ -102,6 +109,7 @@ init_db()
 # =========================================================
 # UTILITIES
 # =========================================================
+
 def compress_img(image_file):
     if image_file is None: return None
     img = Image.open(image_file)
@@ -117,34 +125,38 @@ def multimodal_input(key):
     with c1:
         canvas = st_canvas(stroke_width=2, stroke_color="#00d4ff", background_color="#0e1117", height=200, width=400, key=f"c_{key}")
     with c2:
-        img = st.file_uploader("Snapshot", type=["png", "jpg", "jpeg"], key=f"i_{key}")
+        img = st.file_uploader("Reference Snapshot", type=["png", "jpg", "jpeg"], key=f"i_{key}")
     
     sketch_b64 = None
-    if canvas.image_data is not None and np.any(canvas.image_data[:, :, 3] > 0):
-        raw_img = Image.fromarray(canvas.image_data.astype("uint8"), 'RGBA')
-        buf = io.BytesIO()
-        raw_img.save(buf, format="PNG")
-        sketch_b64 = base64.b64encode(buf.getvalue()).decode()
+    if canvas is not None and canvas.image_data is not None:
+        if np.any(canvas.image_data[:, :, 3] > 0):
+            raw_img = Image.fromarray(canvas.image_data.astype("uint8"), 'RGBA')
+            buf = io.BytesIO()
+            raw_img.save(buf, format="PNG")
+            sketch_b64 = base64.b64encode(buf.getvalue()).decode()
     
     return text, sketch_b64, compress_img(img)
 
 # =========================================================
-# NAVIGATION
+# SIDEBAR
 # =========================================================
-st.sidebar.title("⚙️ AIMecha OS")
+
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
 menu = st.sidebar.radio("Navigation", ["Dashboard", "Courses", "Journal", "Professional CV", "MIT Learning Hub", "Add Course", "System Recovery"])
 
 # =========================================================
-# MODULE: DASHBOARD (PDF TRACKER)
+# MODULE: DASHBOARD (WITH PDF TRACKER)
 # =========================================================
+
 if menu == "Dashboard":
-    st.title("⚙️ AIMecha Study Dashboard")
+    st.title("⚙️ AIMecha OS Dashboard")
     
     # Metrics
     df_c = pd.read_sql_query("SELECT * FROM courses", conn)
     c1, c2, c3 = st.columns(3)
     c1.metric("Active Modules", len(df_c))
-    c2.metric("Registry Mode", "PDF Archiving Active")
+    c2.metric("Registry Mode", "PDF Vault Active")
     c3.metric("DB Protocol", "WAL Enabled")
 
     st.divider()
@@ -172,8 +184,8 @@ if menu == "Dashboard":
             as_name = st.text_input("Assignment Title")
             as_notes = st.text_area("Submission Notes")
             
-            # PDF Uploader
-            up_pdf = st.file_uploader("Attach PDF Solution", type=["pdf"])
+            # PDF UPLOADER INTEGRATION
+            up_pdf = st.file_uploader("Attach PDF Solution / Work", type=["pdf"])
             
             if st.button("💾 Commit to Registry"):
                 f_blob = up_pdf.read() if up_pdf else None
@@ -198,6 +210,7 @@ if menu == "Dashboard":
                 t_col.markdown(f"**{log['assignment_name']}** | {log['course_name']} (📅 {log['date_completed']})")
                 if log['notes']: t_col.caption(log['notes'])
                 
+                # PDF DOWNLOAD BUTTON
                 if log['file_blob']:
                     b_col.download_button(
                         label="📄 PDF",
@@ -213,6 +226,7 @@ if menu == "Dashboard":
 # =========================================================
 # MODULE: COURSES
 # =========================================================
+
 elif menu == "Courses":
     st.title("📚 Study Modules")
     courses = pd.read_sql_query("SELECT * FROM courses", conn)
@@ -227,10 +241,19 @@ elif menu == "Courses":
                         conn.execute("INSERT INTO notes (course_id, note, sketch_data, image_blob, created_at) VALUES (?,?,?,?,?)",
                                      (row['id'], txt, sk, im, datetime.now().strftime("%Y-%m-%d %H:%M")))
                     st.success("Note logged.")
+                
+                # View Notes for this course
+                notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id=? ORDER BY id DESC", conn, params=(row['id'],))
+                for _, n in notes.iterrows():
+                    st.divider()
+                    st.caption(n['created_at'])
+                    if n['note']: st.write(n['note'])
+                    if n['image_blob']: st.image(n['image_blob'], width=300)
 
 # =========================================================
 # MODULE: JOURNAL
 # =========================================================
+
 elif menu == "Journal":
     st.title("📓 System Logs")
     j_title = st.text_input("Log Title", "Daily Iteration")
@@ -242,20 +265,9 @@ elif menu == "Journal":
         st.success("Journal synced.")
 
 # =========================================================
-# MODULE: ADD COURSE
-# =========================================================
-elif menu == "Add Course":
-    st.title("➕ Track New Module")
-    with st.form("add_c"):
-        name = st.text_input("Module Name")
-        cat = st.selectbox("Category", ["Programming", "AI", "Mechatronics", "Control Systems", "Mathematics"])
-        if st.form_submit_button("Inject"):
-            with conn: conn.execute("INSERT INTO courses (category, course_name) VALUES (?,?)", (cat, name))
-            st.success("Module Integrated.")
-
-# =========================================================
 # MODULE: RECOVERY
 # =========================================================
+
 elif menu == "System Recovery":
     st.title("🛠️ Recovery Protocols")
     with open(DB_NAME, "rb") as f:
@@ -268,4 +280,14 @@ elif menu == "System Recovery":
             f.write(restore.getbuffer())
         st.rerun()
 
-# Professional CV and MIT Learning Hub logic remains as visual placeholders.
+# Placeholders for other modules to keep code clean
+elif menu == "Professional CV": st.title("🗂️ Professional Portfolio")
+elif menu == "MIT Learning Hub": st.title("🎓 MIT OCW Hub")
+elif menu == "Add Course":
+    st.title("➕ Track New Module")
+    with st.form("add_c"):
+        name = st.text_input("Module Name")
+        cat = st.selectbox("Category", ["Programming", "AI", "Mechatronics", "Mathematics"])
+        if st.form_submit_button("Inject"):
+            with conn: conn.execute("INSERT INTO courses (category, course_name) VALUES (?,?)", (cat, name))
+            st.success("Module Integrated.")
