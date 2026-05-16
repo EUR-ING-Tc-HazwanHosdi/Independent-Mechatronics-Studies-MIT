@@ -102,7 +102,21 @@ def init_db():
     """ Ensures schema generation and applies column migrations. """
     with conn:
         cursor = conn.cursor()
-        
+        # Add this to your init_db()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mit_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id TEXT,
+            name TEXT,
+            status TEXT,
+            score INTEGER,
+            notes TEXT,
+            sketch_data TEXT,
+            created_at TEXT
+        )
+        """)
+
         # Courses Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS courses (
@@ -302,6 +316,7 @@ menu = st.sidebar.radio(
         "Management Center",
         "Add Course",
         "System Recovery"
+        "MIT OCW Exercise & Assignment Tracker"
     ]
 )
 
@@ -679,7 +694,76 @@ elif menu == "Journal":
                     pass
             if j['image_blob']:
                 jc2.image(j['image_blob'], caption="Hardware Component Reference Photo")
+                
+#MIT TAB TRACKER
+elif menu == "MIT OCW Tracker":
+    st.title("🎓 MIT OCW Exercise & Assignment Tracker")
+    
+    # --- Input Section ---
+    with st.expander("📝 Log New Exercise/Assignment Progress", expanded=True):
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            course_id = st.text_input("Course ID (e.g., 6.0001, 18.01)")
+            assignment_name = st.text_input("Assignment/Problem Set Name")
+        with c2:
+            status = st.selectbox("Current Status", ["Not Started", "In Progress", "Completed", "Review Required"])
+            score = st.slider("Self-Assessed Score (%)", 0, 100, 0)
+        
+        # Using the same multimodal input for consistency
+        txt, sk, im_list = multimodal_input("mit_ocw_channel")
+        
+        if st.button("🚀 Log Progress to Academic Ledger"):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            db_cursor = conn.cursor()
+            with conn:
+                # 1. Main Entry
+                db_cursor.execute("""
+                    INSERT INTO mit_assignments (course_id, name, status, score, notes, sketch_data, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (course_id, assignment_name, status, score, txt, sk, timestamp))
+                
+                # 2. Attachments
+                last_id = db_cursor.lastrowid
+                for blob in im_list:
+                    if blob:
+                        db_cursor.execute("""
+                            INSERT INTO media_attachments (parent_id, parent_type, image_blob)
+                            VALUES (?, 'mit_ocw', ?)
+                        """, (last_id, blob))
+            st.success(f"Archived {assignment_name} in the Academic Ledger.")
+            st.rerun()
 
+    # --- Display/Recall Section ---
+    st.divider()
+    mit_df = pd.read_sql_query("SELECT * FROM mit_assignments ORDER BY id DESC", conn)
+    
+    for _, item in mit_df.iterrows():
+        with st.container(border=True):
+            col_a, col_b = st.columns([3, 1])
+            col_a.subheader(f"{item['course_id']}: {item['name']}")
+            
+            # Status Badge Logic
+            status_color = "green" if item['status'] == "Completed" else "orange"
+            col_b.markdown(f":{status_color}[**{item['status']}**] - {item['score']}%")
+            
+            if item['notes']:
+                st.info(item['notes'])
+            
+            # Recall associated images
+            mit_media = pd.read_sql_query(
+                "SELECT image_blob FROM media_attachments WHERE parent_id = ? AND parent_type = 'mit_ocw'", 
+                conn, params=(item['id'],)
+            )
+            
+            if not mit_media.empty:
+                cols = st.columns(4)
+                for idx, m_row in mit_media.iterrows():
+                    cols[idx % 4].image(m_row['image_blob'], use_container_width=True)
+            
+            if st.button("🗑️ Delete", key=f"del_mit_{item['id']}"):
+                with conn:
+                    conn.execute("DELETE FROM mit_assignments WHERE id=?", (item['id'],))
+                st.rerun()
 # =========================================================
 # MODULE 4: SYSTEM OPERATING PORTFOLIO (CV MANAGER)
 # =========================================================
