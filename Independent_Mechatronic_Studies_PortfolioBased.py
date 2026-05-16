@@ -586,7 +586,7 @@ elif menu == "Journal":
     
     for _, j in journal_df.iterrows():
         with st.container(border=True):
-            jh1, jh2, jh3 = st.columns([1, 10, 2])
+            jh1, jh2, jh3 = st.columns([0, 10, 2])
             jh2.subheader(j['title'])
             
             with jh2:
