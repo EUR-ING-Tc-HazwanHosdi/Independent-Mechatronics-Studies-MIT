@@ -103,15 +103,6 @@ def init_db():
     with conn:
         cursor = conn.cursor()
         
-        # New Centralized Media Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS media_attachments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            parent_id INTEGER NOT NULL,
-            parent_type TEXT NOT NULL, -- 'note', 'journal', or 'assignment'
-            image_blob BLOB NOT NULL
-        )
-        """)
         # Courses Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS courses (
@@ -173,10 +164,7 @@ def init_db():
             pdf_blob BLOB
         )
         """)
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN file_reference TEXT")
-        except sqlite3.OperationalError:
-            pass
+
         # Runtime Schema Updates for existing databases (Prevents crashes if database already exists)
         try:
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN sketch_data TEXT")
@@ -246,33 +234,53 @@ def compress_img(image_file):
         return None
 
 def multimodal_input(key):
-    text = st.text_area("Documentation Context", key=f"text_input_{key}", height=120)
+    """ Renders the dual text field, responsive canvas sketchpad, and file attachment hooks. """
+    text = st.text_area(
+        "Technical Notes / Documentation Context",
+        key=f"text_input_{key}",
+        height=120,
+        placeholder="Enter equations, operational thresholds, or execution logs..."
+    )
     
     c1, c2 = st.columns(2)
     with c1:
+        st.caption("🎨 Engineering Sketchpad Workspace")
         canvas = st_canvas(
-            stroke_width=3, stroke_color="#00d4ff", background_color="#0e1117",
-            height=250, width=500, drawing_mode="freedraw", key=f"canvas_{key}"
+            fill_color="rgba(0, 212, 255, 0.05)",
+            stroke_width=3,
+            stroke_color="#00d4ff",
+            background_color="#0e1117",
+            height=250,
+            width=500,
+            drawing_mode="freedraw",
+            key=f"canvas_component_{key}",
+            update_streamlit=True
         )
 
     with c2:
-        # ALLOW MULTIPLE FILES HERE
-        imgs = st.file_uploader("Upload Attachments", type=["png", "jpg", "jpeg"], 
-                                accept_multiple_files=True, key=f"img_multi_{key}")
+        st.caption("🖼️ Upload Reference Documentation Spec")
+        img = st.file_uploader(
+            "Upload Image Attachment",
+            type=["png", "jpg", "jpeg"],
+            key=f"img_upload_{key}"
+        )
 
-    # Process Sketch
     sketch_b64 = None
+    # Process canvas layer vectors safely
     if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
+        # Evaluate if alpha channels have concrete drawn lines
         if np.any(arr[:, :, 3] > 0):  
-            raw_img = Image.fromarray(arr, 'RGBA')
-            buf = io.BytesIO()
-            raw_img.save(buf, format="PNG")
-            sketch_b64 = base64.b64encode(buf.getvalue()).decode()
+            try:
+                raw_img = Image.fromarray(arr, 'RGBA')
+                buf = io.BytesIO()
+                raw_img.save(buf, format="PNG")
+                sketch_b64 = base64.b64encode(buf.getvalue()).decode()
+            except Exception as e:
+                st.error(f"Canvas drawing compression fault: {e}")
 
-    # Process all images into a list of blobs
-    img_blobs = [compress_img(i) for i in imgs] if imgs else []
-    return text, sketch_b64, img_blobs
+    img_blob = compress_img(img) if img else None
+    return text, sketch_b64, img_blob
 
 # =========================================================
 # APPLICATION NAVIGATION & QUICK LAUNCH SIDEBAR
@@ -316,43 +324,47 @@ for course, url in mit_courses.items():
     st.sidebar.markdown(f'<a href="{url}" target="_blank" style="text-decoration:none; color:#00d4ff;">⚡ {course}</a>', unsafe_allow_html=True)
 
 # =========================================================
-# MODULE 1: INTERACTIVE ANALYTICS DASHBOARD (INTEGRATED VAULT)
+# MODULE 1: INTERACTIVE ANALYTICS DASHBOARD WITH EXERCISE LOGS
 # =========================================================
 
 if menu == "Dashboard":
     st.title("⚙️ AIMecha Engineering & Physical Optimization Dashboard")
     
-    # 0. Infrastructure Check (Ensures Vault Exists)
-    VAULT_DIR = "aimecha_vault"
-    if not os.path.exists(VAULT_DIR):
-        os.makedirs(VAULT_DIR)
-
-    # Load course metrics for the dashboard cards
-    df_courses = pd.read_sql_query("SELECT * FROM courses", conn)
+    df = pd.read_sql_query("SELECT * FROM courses", conn)
     notes_count = pd.read_sql_query("SELECT COUNT(*) FROM notes", conn).iloc[0,0]
     journal_count = pd.read_sql_query("SELECT COUNT(*) FROM journal", conn).iloc[0,0]
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Active Modules", len(df_courses))
-    completion = (df_courses['completed'].mean() * 100) if not df_courses.empty else 0
+    c1.metric("Active Modules", len(df))
+    completion = (df['completed'].mean() * 100) if not df.empty else 0
     c2.metric("Curriculum Completion", f"{completion:.1f}%")
     c3.metric("Technical Notes Stack", notes_count)
     c4.metric("Journal Logs Committed", journal_count)
     
+    st.markdown("""
+    <div class="header-card">
+        <h3>System Overview Matrix</h3>
+        <p style="color: #94a3b8;">AIMecha Study OS operates as an isolated knowledge containment engine. 
+        Engineered specifically for organizing mathematical models, real-time control system diagrams, 
+        and hardware engineering notes across robotics, machine learning, and embedded firmware design tracks.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.divider()
 
-    # =========================================================
-    # MIT OCW ASSIGNMENT & EXERCISE TRACKER (VAULT INTEGRATED)
+   # =========================================================
+    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
+    st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
-    # 1. READ PIPELINE: Load assignments with 'file_reference' capability
+    # 1. READ PIPELINE: Safely load assignments before drawing any UI columns
     try:
         db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
-    except Exception:
+    except Exception as e:
         db_assignment_logs = pd.DataFrame()
         
-    # 2. INPUT LAYER
+    # 2. INPUT LAYER: Split the top interaction controls cleanly into two columns
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
@@ -360,14 +372,21 @@ if menu == "Dashboard":
         assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
         
         if assignment_csv is not None:
-            uploaded_df = pd.read_csv(assignment_csv)
-            # Ensure the CSV has 'file_reference' to link to the Vault
-            if st.button("🚀 Commit CSV to Local DB", key="commit_csv_btn"):
-                with conn:
-                    # Append logic that preserves file references
-                    uploaded_df.to_sql("assignment_logs", conn, if_exists="append", index=False)
-                st.success("CSV Registry imported! Put files in 'aimecha_vault' to recall.")
-                st.rerun()
+            try:
+                uploaded_df = pd.read_csv(assignment_csv)
+                required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
+                if all(col in uploaded_df.columns for col in required_cols):
+                    if st.button("🚀 Commit Assignments to DB", key="commit_csv_btn"):
+                        with conn:
+                            for _, row in uploaded_df.iterrows():
+                                conn.execute("""
+                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
+                                    VALUES (?, ?, ?, ?)
+                                """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
+                        st.success("Assignment history parsed!")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"CSV Parse Subroutine Fault: {e}")
 
     with col_manual:
         st.markdown("**Log Completed Task Node**")
@@ -376,88 +395,105 @@ if menu == "Dashboard":
         with sub_tab_text:
             with st.popover("➕ Open Dynamic Assignment Log Channel", use_container_width=True):
                 as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
-                course_opts = ["General Study Task"] if df_courses.empty else df_courses['course_name'].tolist()
-                as_course = st.selectbox("Associated MIT Module", course_opts, key="manual_course")
-                as_name = st.text_input("Task Name", placeholder="e.g., Problem Set 1", key="manual_name")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
+                as_name = st.text_input("Assignment/Task Name", placeholder="e.g., Problem Set 1 / Lab 3 Matrix", key="manual_name")
+                
+                # This routes your assignment tracker directly into your canvas/image upload machine
                 as_notes, as_sketch, as_img = multimodal_input("assignment_tracker_channel")
                 
                 if st.button("💾 Append Task to Master Stack", use_container_width=True):
-                    with conn:
-                        conn.execute("""
-                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
-                    st.rerun()
+                    if not as_name.strip():
+                        st.error("Assignment tracking label cannot be blank.")
+                    else:
+                        with conn:
+                            conn.execute("""
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
+                        st.success("Multimodal task record successfully locked in matrix.")
+                        st.rerun()
 
         with sub_tab_pdf:
             with st.popover("📤 Upload Formal PDF Deliverable", use_container_width=True):
                 pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
-                pdf_name = st.text_input("Assignment Metric Name", key="pdf_name_in")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                pdf_course = st.selectbox("Module Reference Alignment", course_options, key="pdf_course_sel")
+                pdf_name = st.text_input("Assignment Metric Name", placeholder="e.g., Verified Proof Set", key="pdf_name_in")
                 pdf_file = st.file_uploader("Upload PDF Document Binary", type=["pdf"], key="pdf_file_drop")
                 
-                if st.button("🚀 Archive PDF to Local Vault", use_container_width=True) and pdf_file:
-                    # SAVE PHYSICALLY TO VAULT
-                    file_save_path = os.path.join(VAULT_DIR, pdf_file.name)
-                    with open(file_save_path, "wb") as f:
-                        f.write(pdf_file.getbuffer())
-                    
-                    # SAVE REFERENCE TO DB
-                    with conn:
-                        conn.execute("""
-                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, file_reference)
-                            VALUES (?, ?, ?, ?)
-                        """, (pdf_date.strftime("%Y-%m-%d"), "PDF Archive", pdf_name, pdf_file.name))
-                    st.success(f"Stored in Vault: {pdf_file.name}")
-                    st.rerun()
+                if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
+                    if pdf_file is not None and pdf_name:
+                        pdf_bytes = pdf_file.read()
+                        with conn:
+                            conn.execute("""
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
+                                VALUES (?, ?, ?, ?)
+                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
+                        st.success("PDF Encrypted and Stored in Repository.")
+                        st.rerun()
 
-    # =========================================================
-    # RECALL ENGINE: MASTER REGISTRY DISPLAY
-    # =========================================================
-    st.markdown("### 🗄️ Local System Archive (Master Registry)")
+    # 3. DISPLAY LAYER: Full-width registry layout placed out of columns to prevent squeezing layout cards
+    st.markdown("### Master Coursework Submission Registry")
     
     if db_assignment_logs.empty:
-        st.info("No active academic assignment entries detected.")
+        st.info("No active academic assignment entries detected inside the system infrastructure registry.")
     else:
         for _, row in db_assignment_logs.iterrows():
             with st.container(border=True):
-                h1, h2, h3, h4 = st.columns([1, 2, 3, 1])
-                h1.write(f"📅 **{row['date_completed']}**")
-                h2.code(row['course_name'])
-                h3.markdown(f"📘 **{row['assignment_name']}**")
+                # Metric header line layout
+                cols = st.columns([1, 2, 3, 1])
+                cols[0].write(f"📅 **{row['date_completed']}**")
+                cols[1].write(f"🏷️ `{row['course_name']}`")
+                cols[2].write(f"📘 **{row['assignment_name']}**")
                 
-                if h4.button("🗑️", key=f"del_rec_{row['id']}"):
-                    with conn:
-                        conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
-                    st.rerun()
+                with cols[3]:
+                    inline_as_edit, inline_as_del = st.columns(2)
+                    with inline_as_edit:
+                        with st.popover("✏️", help="Modify textual elements"):
+                            st.markdown(f"**Modify Assignment Text [ID: {row['id']}]**")
+                            up_as_name = st.text_input("Edit Assignment Title", value=row['assignment_name'], key=f"as_name_ed_{row['id']}")
+                            up_as_notes = st.text_area("Edit Explanatory Context", value=row['notes'] or "", key=f"as_notes_ed_{row['id']}")
+                            if st.button("💾 Push Mutation", key=f"save_as_ed_{row['id']}"):
+                                with conn:
+                                    conn.execute("""
+                                        UPDATE assignment_logs 
+                                        SET assignment_name = ?, notes = ? 
+                                        WHERE id = ?
+                                    """, (up_as_name, up_as_notes, row['id']))
+                                st.rerun()
+                    with inline_as_del:
+                        if st.button("🗑️", key=f"wipe_as_{row['id']}", help="Wipe assignment log"):
+                            with conn:
+                                conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
+                            st.rerun()
 
-                if row['notes']:
-                    st.info(row['notes'])
+                # Render contextual details if available
+                if row['notes'] and str(row['notes']).strip() != "":
+                    st.markdown(f"**Notes:** {row['notes']}")
 
-                # --- MULTIMODAL RECALL (BINARY & PHYSICAL) ---
-                c_rec1, c_rec2 = st.columns(2)
+                # Inline Image/Sketch Grid Logic
+                img_c1, img_c2 = st.columns(2)
                 
-                # 1. Recall Canvas Sketch
                 if 'sketch_data' in row and row['sketch_data']:
-                    c_rec1.image(base64.b64decode(row['sketch_data']), caption="Recalled Sketch")
-
-                # 2. Recall Image (Binary BLOB)
+                    try:
+                        img_c1.image(base64.b64decode(row['sketch_data']), caption="Assignment Design Sketch / Math Workflow")
+                    except Exception:
+                        pass
+                        
                 if 'image_blob' in row and row['image_blob']:
-                    c_rec2.image(row['image_blob'], caption="Recalled Reference")
-
-                # 3. Recall PDF (Physical Vault Search)
-                # Check for 'file_reference' column which links to the vault
-                if 'file_reference' in row and row['file_reference']:
-                    vault_path = os.path.join(VAULT_DIR, str(row['file_reference']))
-                    if os.path.exists(vault_path):
-                        with open(vault_path, "rb") as f:
-                            st.download_button(
-                                label=f"📥 Recall PDF: {row['file_reference']}",
-                                data=f,
-                                file_name=row['file_reference'],
-                                key=f"vault_dl_{row['id']}"
-                            )
-                    else:
-                        st.error(f"File missing from vault: {row['file_reference']}")
+                    img_c2.image(row['image_blob'], caption="Attached Hardware Spec Snapshot / Proof Image")
+                    
+                if 'pdf_blob' in row and row['pdf_blob'] is not None:
+                    st.download_button(
+                        label="📥 Download Attached Verification PDF Deliverable",
+                        data=row['pdf_blob'],
+                        file_name=f"{row['assignment_name']}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_pdf_node_{row['id']}"
+                    )
 
 # =========================================================
 # MODULE 2: DYNAMIC ENGINEERING STUDY MODULES (COURSES)
@@ -587,37 +623,23 @@ elif menu == "Journal":
     with st.expander("➕ Open New Chronological System Entry Channel", expanded=True):
         j_title = st.text_input("Log Diagnostic Target Title", "Daily System Engineering Iteration Report")
         
-        # Capture input from multimodal function
-        txt, sk, im_list = multimodal_input("journal_master_channel")
+        txt, sk, im = multimodal_input("journal_master_channel")
         
         if st.button("🚀 Push Log Entry to Master Stream", key="commit_journal_btn"):
-            if txt.strip() == "" and sk is None and not im_list:
+            if txt.strip() == "" and sk is None and im is None:
                 st.error("Cannot commit an empty system journal entry.")
             else:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                db_cursor = conn.cursor() 
                 with conn:
-                    # 1. Insert the text and sketch
-                    db_cursor.execute("""
-                        INSERT INTO journal (title, entry, sketch_data, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (j_title, txt, sk, timestamp, timestamp))
-                    
-                    # 2. Get the new ID
-                    last_id = db_cursor.lastrowid
-                    
-                    # 3. Save all images to the attachments table
-                    for blob in im_list:
-                        if blob:
-                            db_cursor.execute("""
-                                INSERT INTO media_attachments (parent_id, parent_type, image_blob)
-                                VALUES (?, 'journal', ?)
-                            """, (last_id, blob))
-                st.success(f"Journal update streamed with {len(im_list)} images.")
+                    conn.execute("""
+                    INSERT INTO journal (title, entry, sketch_data, image_blob, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, (j_title, txt, sk, im, timestamp, timestamp))
+                st.success("Journal update streamed to system storage array.")
                 st.rerun()
             
     st.divider()
-    search_j = st.text_input("🔍 Filter Master Journal Stream", placeholder="Search records...")
+    search_j = st.text_input("🔍 Filter Master Journal Stream By String Value", placeholder="Search records...")
     
     journal_df = pd.read_sql_query("""
         SELECT * FROM journal 
@@ -632,12 +654,11 @@ elif menu == "Journal":
             
             with jh2:
                 with st.popover("✏️"):
-                    e_title = st.text_input("Modify Title", value=j['title'], key=f"ejt_{j['id']}")
-                    e_entry = st.text_area("Modify Body", value=j['entry'] or "", key=f"eje_{j['id']}")
+                    e_title = st.text_input("Modify Title Header", value=j['title'], key=f"ejt_{j['id']}")
+                    e_entry = st.text_area("Modify Body Context", value=j['entry'] or "", key=f"eje_{j['id']}")
                     if st.button("💾 Apply Edits", key=f"sve_j_{j['id']}"):
                         with conn:
-                            conn.execute("UPDATE journal SET title=?, entry=?, updated_at=? WHERE id=?", 
-                                         (e_title, e_entry, datetime.now().strftime("%Y-%m-%d %H:%M"), j['id']))
+                            conn.execute("UPDATE journal SET title=?, entry=?, updated_at=? WHERE id=?", (e_title, e_entry, datetime.now().strftime("%Y-%m-%d %H:%M"), j['id']))
                         st.rerun()
             
             with jh3:
@@ -646,26 +667,18 @@ elif menu == "Journal":
                         conn.execute("DELETE FROM journal WHERE id=?", (j['id'],))
                     st.rerun()
                     
-            st.caption(f"🕒 Created: {j['created_at']} | Modified: {j['updated_at'] or 'No Changes'}")
-            
+            st.caption(f"🕒 Node Creation Metric: {j['created_at']} | Alteration Marker: {j['updated_at'] or 'No Changes'}")
             if j['entry']:
                 st.write(j['entry'])
                 
-            # --- MULTIMODAL RECALL AREA ---
+            jc1, jc2 = st.columns(2)
             if j['sketch_data']:
-                st.image(base64.b64decode(j['sketch_data']), caption="Diagnostic Workspace Sketch", width=500)
-
-            # NEW: Multi-Image Gallery Recall
-            media = pd.read_sql_query(
-                "SELECT image_blob FROM media_attachments WHERE parent_id = ? AND parent_type = 'journal'", 
-                conn, params=(j['id'],)
-            )
-
-            if not media.empty:
-                st.markdown("---")
-                cols = st.columns(3) 
-                for idx, m_row in media.iterrows():
-                    cols[idx % 3].image(m_row['image_blob'], use_container_width=True)
+                try:
+                    jc1.image(base64.b64decode(j['sketch_data']), caption="Diagnostic Workspace Sketch")
+                except Exception:
+                    pass
+            if j['image_blob']:
+                jc2.image(j['image_blob'], caption="Hardware Component Reference Photo")
 
 # =========================================================
 # MODULE 4: SYSTEM OPERATING PORTFOLIO (CV MANAGER)
