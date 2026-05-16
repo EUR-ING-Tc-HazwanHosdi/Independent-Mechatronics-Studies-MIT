@@ -496,7 +496,7 @@ elif menu == "Courses":
                 st.divider()
                 
                 st.subheader("Add Course Log / Documentation Entry")
-                txt, sk, im = multimodal_input(f"course_note_{row['id']}")
+                txt, sk, im = multimodal_input(f"note_v1_{row['id']}")
                 
                 if st.button("🚀 Commit Entry to Module Stack", key=f"btn_n_{row['id']}"):
                     if txt.strip() == "" and sk is None and im is None:
