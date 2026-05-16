@@ -759,21 +759,64 @@ elif menu == "Add Course":
 elif menu == "System Recovery":
     st.title("🛠️ System Resiliency & Recovery Protocols")
     
-    st.warning("Executing a recovery action direct-overwrites or drops system infrastructure assets.")
+    st.markdown("""
+    Manage local storage states. You can pull an encrypted backup down to an external filesystem, 
+    or re-inject a historical database snap to completely restore states across alternative terminals.
+    """)
     
-    b1, b2 = st.columns(2)
+    tab_backup, tab_restore = st.tabs(["📦 Database backup export", "📥 Database snapshot restoration"])
     
-    with b1:
+    with tab_backup:
         st.subheader("Data Export Subroutine")
-        if st.button("📦 Execute Local DB Compilation"):
-            try:
-                with open(DB_NAME, "rb") as f:
-                    db_bytes = f.read()
-                st.download_button(
-                    label="💾 Download Raw Database Asset",
-                    data=db_bytes,
-                    file_name=f"aimecha_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
-                    mime="application/x-sqlite3"
-                )
-            except Exception as e:
-                st.error(f"Backup serialization breakdown: {e}")
+        st.info("Compiles all local relational tables, base64 drawings, blobs, and metrics into a single transportable SQLite asset.")
+        try:
+            with open(DB_NAME, "rb") as f:
+                db_bytes = f.read()
+            st.download_button(
+                label="💾 Download Raw Database Asset",
+                data=db_bytes,
+                file_name=f"aimecha_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+                mime="application/x-sqlite3"
+            )
+        except Exception as e:
+            st.error(f"Backup serialization breakdown: {e}")
+            
+    with tab_restore:
+        st.subheader("System State Ingestion")
+        st.error("⚠️ WARNING: Uploading a recovery database will completely overwrite all local configurations, notes, and metrics currently active in this runtime container.")
+        
+        recovery_file = st.file_uploader(
+            "Upload AIMecha .db Backup File", 
+            type=["db", "sqlite", "sqlite3"], 
+            key="recovery_db_uploader"
+        )
+        
+        if recovery_file is not None:
+            # Multi-layer click validation sequence to protect user from unintended data loss
+            confirm_gate = st.checkbox("I explicitly verify that I want to wipe the active application instance and restore this snapshot.")
+            
+            if st.button("🚨 Overwrite Active Application State", disabled=not confirm_gate):
+                try:
+                    # Step 1: Read uploaded binary payload into application memory buffer
+                    uploaded_bytes = recovery_file.read()
+                    
+                    # Step 2: Validate the payload header to ensure it's a legitimate SQLite file
+                    if len(uploaded_bytes) > 100 and uploaded_bytes[:16] == b'SQLite format 3\x00':
+                        
+                        # Step 3: Explicitly close active cross-thread connection instances
+                        conn.close()
+                        
+                        # Step 4: Destructive file-system overwrite write cycle
+                        with open(DB_NAME, "wb") as f:
+                            f.write(uploaded_bytes)
+                        
+                        # Step 5: Wipe Streamlit's internal global caching resource context 
+                        # This forces the app to recreate the database reference pool on rerun
+                        st.cache_resource.clear()
+                        
+                        st.success("⚙️ AIMecha core tables restored successfully! Cold-rebooting application context...")
+                        st.rerun()
+                    else:
+                        st.error("Validation Mutation Fault: The uploaded payload does not contain a signature matching standard SQLite header rules.")
+                except Exception as e:
+                    st.error(f"Critical Restoration System Fault: {e}")
