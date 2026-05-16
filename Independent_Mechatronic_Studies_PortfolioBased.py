@@ -324,47 +324,43 @@ for course, url in mit_courses.items():
     st.sidebar.markdown(f'<a href="{url}" target="_blank" style="text-decoration:none; color:#00d4ff;">⚡ {course}</a>', unsafe_allow_html=True)
 
 # =========================================================
-# MODULE 1: INTERACTIVE ANALYTICS DASHBOARD WITH EXERCISE LOGS
+# MODULE 1: INTERACTIVE ANALYTICS DASHBOARD (INTEGRATED VAULT)
 # =========================================================
 
 if menu == "Dashboard":
     st.title("⚙️ AIMecha Engineering & Physical Optimization Dashboard")
     
-    df = pd.read_sql_query("SELECT * FROM courses", conn)
+    # 0. Infrastructure Check (Ensures Vault Exists)
+    VAULT_DIR = "aimecha_vault"
+    if not os.path.exists(VAULT_DIR):
+        os.makedirs(VAULT_DIR)
+
+    # Load course metrics for the dashboard cards
+    df_courses = pd.read_sql_query("SELECT * FROM courses", conn)
     notes_count = pd.read_sql_query("SELECT COUNT(*) FROM notes", conn).iloc[0,0]
     journal_count = pd.read_sql_query("SELECT COUNT(*) FROM journal", conn).iloc[0,0]
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Active Modules", len(df))
-    completion = (df['completed'].mean() * 100) if not df.empty else 0
+    c1.metric("Active Modules", len(df_courses))
+    completion = (df_courses['completed'].mean() * 100) if not df_courses.empty else 0
     c2.metric("Curriculum Completion", f"{completion:.1f}%")
     c3.metric("Technical Notes Stack", notes_count)
     c4.metric("Journal Logs Committed", journal_count)
     
-    st.markdown("""
-    <div class="header-card">
-        <h3>System Overview Matrix</h3>
-        <p style="color: #94a3b8;">AIMecha Study OS operates as an isolated knowledge containment engine. 
-        Engineered specifically for organizing mathematical models, real-time control system diagrams, 
-        and hardware engineering notes across robotics, machine learning, and embedded firmware design tracks.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
     st.divider()
 
-   # =========================================================
-    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
+    # =========================================================
+    # MIT OCW ASSIGNMENT & EXERCISE TRACKER (VAULT INTEGRATED)
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
-    st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
-    # 1. READ PIPELINE: Safely load assignments before drawing any UI columns
+    # 1. READ PIPELINE: Load assignments with 'file_reference' capability
     try:
         db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
-    except Exception as e:
+    except Exception:
         db_assignment_logs = pd.DataFrame()
         
-    # 2. INPUT LAYER: Split the top interaction controls cleanly into two columns
+    # 2. INPUT LAYER
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
@@ -372,21 +368,14 @@ if menu == "Dashboard":
         assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
         
         if assignment_csv is not None:
-            try:
-                uploaded_df = pd.read_csv(assignment_csv)
-                required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
-                if all(col in uploaded_df.columns for col in required_cols):
-                    if st.button("🚀 Commit Assignments to DB", key="commit_csv_btn"):
-                        with conn:
-                            for _, row in uploaded_df.iterrows():
-                                conn.execute("""
-                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
-                                    VALUES (?, ?, ?, ?)
-                                """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
-                        st.success("Assignment history parsed!")
-                        st.rerun()
-            except Exception as e:
-                st.error(f"CSV Parse Subroutine Fault: {e}")
+            uploaded_df = pd.read_csv(assignment_csv)
+            # Ensure the CSV has 'file_reference' to link to the Vault
+            if st.button("🚀 Commit CSV to Local DB", key="commit_csv_btn"):
+                with conn:
+                    # Append logic that preserves file references
+                    uploaded_df.to_sql("assignment_logs", conn, if_exists="append", index=False)
+                st.success("CSV Registry imported! Put files in 'aimecha_vault' to recall.")
+                st.rerun()
 
     with col_manual:
         st.markdown("**Log Completed Task Node**")
@@ -395,45 +384,39 @@ if menu == "Dashboard":
         with sub_tab_text:
             with st.popover("➕ Open Dynamic Assignment Log Channel", use_container_width=True):
                 as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
-                course_options = ["General Study Task"]
-                if not df.empty: course_options = df['course_name'].tolist()
-                as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
-                as_name = st.text_input("Assignment/Task Name", placeholder="e.g., Problem Set 1 / Lab 3 Matrix", key="manual_name")
-                
-                # This routes your assignment tracker directly into your canvas/image upload machine
+                course_opts = ["General Study Task"] if df_courses.empty else df_courses['course_name'].tolist()
+                as_course = st.selectbox("Associated MIT Module", course_opts, key="manual_course")
+                as_name = st.text_input("Task Name", placeholder="e.g., Problem Set 1", key="manual_name")
                 as_notes, as_sketch, as_img = multimodal_input("assignment_tracker_channel")
                 
                 if st.button("💾 Append Task to Master Stack", use_container_width=True):
-                    if not as_name.strip():
-                        st.error("Assignment tracking label cannot be blank.")
-                    else:
-                        with conn:
-                            conn.execute("""
-                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
-                        st.success("Multimodal task record successfully locked in matrix.")
-                        st.rerun()
+                    with conn:
+                        conn.execute("""
+                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
+                    st.rerun()
 
         with sub_tab_pdf:
             with st.popover("📤 Upload Formal PDF Deliverable", use_container_width=True):
                 pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
-                course_options = ["General Study Task"]
-                if not df.empty: course_options = df['course_name'].tolist()
-                pdf_course = st.selectbox("Module Reference Alignment", course_options, key="pdf_course_sel")
-                pdf_name = st.text_input("Assignment Metric Name", placeholder="e.g., Verified Proof Set", key="pdf_name_in")
+                pdf_name = st.text_input("Assignment Metric Name", key="pdf_name_in")
                 pdf_file = st.file_uploader("Upload PDF Document Binary", type=["pdf"], key="pdf_file_drop")
                 
-                if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
-                    if pdf_file is not None and pdf_name:
-                        pdf_bytes = pdf_file.read()
-                        with conn:
-                            conn.execute("""
-                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
-                                VALUES (?, ?, ?, ?)
-                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
-                        st.success("PDF Encrypted and Stored in Repository.")
-                        st.rerun()
+                if st.button("🚀 Archive PDF to Local Vault", use_container_width=True) and pdf_file:
+                    # SAVE PHYSICALLY TO VAULT
+                    file_save_path = os.path.join(VAULT_DIR, pdf_file.name)
+                    with open(file_save_path, "wb") as f:
+                        f.write(pdf_file.getbuffer())
+                    
+                    # SAVE REFERENCE TO DB
+                    with conn:
+                        conn.execute("""
+                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, file_reference)
+                            VALUES (?, ?, ?, ?)
+                        """, (pdf_date.strftime("%Y-%m-%d"), "PDF Archive", pdf_name, pdf_file.name))
+                    st.success(f"Stored in Vault: {pdf_file.name}")
+                    st.rerun()
 
     # =========================================================
     # RECALL ENGINE: MASTER REGISTRY DISPLAY
@@ -441,56 +424,48 @@ if menu == "Dashboard":
     st.markdown("### 🗄️ Local System Archive (Master Registry)")
     
     if db_assignment_logs.empty:
-        st.info("No active academic assignment entries detected in local storage.")
+        st.info("No active academic assignment entries detected.")
     else:
-        # This loop pulls the data directly from your local SQLite file
         for _, row in db_assignment_logs.iterrows():
             with st.container(border=True):
-                # 1. METADATA HEADER
-                h_col1, h_col2, h_col3, h_col4 = st.columns([1, 2, 3, 1])
-                h_col1.write(f"📅 **{row['date_completed']}**")
-                h_col2.code(row['course_name'])
-                h_col3.markdown(f"📘 **{row['assignment_name']}**")
+                h1, h2, h3, h4 = st.columns([1, 2, 3, 1])
+                h1.write(f"📅 **{row['date_completed']}**")
+                h2.code(row['course_name'])
+                h3.markdown(f"📘 **{row['assignment_name']}**")
                 
-                # Inline Delete/Edit actions
-                with h_col4:
-                    act_edit, act_del = st.columns(2)
-                    if act_del.button("🗑️", key=f"del_rec_{row['id']}"):
-                        with conn:
-                            conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
-                        st.rerun()
+                if h4.button("🗑️", key=f"del_rec_{row['id']}"):
+                    with conn:
+                        conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
+                    st.rerun()
 
-                # 2. RECALL TEXTUAL NOTES
-                if row['notes'] and str(row['notes']).strip() != "":
-                    st.markdown(f"**Technical Logs:**")
+                if row['notes']:
                     st.info(row['notes'])
 
-                # 3. RECALL VISUAL BINARIES (Images and Sketches)
-                img_col1, img_col2 = st.columns(2)
+                # --- MULTIMODAL RECALL (BINARY & PHYSICAL) ---
+                c_rec1, c_rec2 = st.columns(2)
                 
-                # Decodes sketch from Base64 string stored in DB
+                # 1. Recall Canvas Sketch
                 if 'sketch_data' in row and row['sketch_data']:
-                    try:
-                        img_col1.image(base64.b64decode(row['sketch_data']), 
-                                      caption="Recalled Engineering Sketch", 
-                                      use_container_width=True)
-                    except: pass
+                    c_rec1.image(base64.b64decode(row['sketch_data']), caption="Recalled Sketch")
 
-                # Recalls raw image bytes from BLOB column
+                # 2. Recall Image (Binary BLOB)
                 if 'image_blob' in row and row['image_blob']:
-                    img_col2.image(row['image_blob'], 
-                                   caption="Recalled Hardware Spec/Reference", 
-                                   use_container_width=True)
+                    c_rec2.image(row['image_blob'], caption="Recalled Reference")
 
-                # 4. RECALL PDF DOCUMENTS
-                if 'pdf_blob' in row and row['pdf_blob'] is not None:
-                    st.download_button(
-                        label="📥 Download Local PDF Copy",
-                        data=row['pdf_blob'],
-                        file_name=f"LOCAL_RECALL_{row['assignment_name']}.pdf",
-                        mime="application/pdf",
-                        key=f"dl_pdf_{row['id']}"
-                    )
+                # 3. Recall PDF (Physical Vault Search)
+                # Check for 'file_reference' column which links to the vault
+                if 'file_reference' in row and row['file_reference']:
+                    vault_path = os.path.join(VAULT_DIR, str(row['file_reference']))
+                    if os.path.exists(vault_path):
+                        with open(vault_path, "rb") as f:
+                            st.download_button(
+                                label=f"📥 Recall PDF: {row['file_reference']}",
+                                data=f,
+                                file_name=row['file_reference'],
+                                key=f"vault_dl_{row['id']}"
+                            )
+                    else:
+                        st.error(f"File missing from vault: {row['file_reference']}")
 
 # =========================================================
 # MODULE 2: DYNAMIC ENGINEERING STUDY MODULES (COURSES)
