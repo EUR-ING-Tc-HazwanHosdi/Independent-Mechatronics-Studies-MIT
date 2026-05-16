@@ -450,7 +450,51 @@ if menu == "Dashboard":
                     conn.execute("DELETE FROM assignment_logs WHERE id=?", (target_id,))
                 st.success(f"Assignment ID {target_id} removed.")
                 st.rerun()
+if menu == "Dashboard":  # <-- Find this line in your script!
+    st.title("🎛️ System Registry Space")
+    
+    # --- PUT THE UPLOAD FORM INTEGRATION HERE ---
+    with st.form("upload_form", clear_on_submit=True):
+        course = st.text_input("Course Name")
+        title = st.text_input("Assignment Title")
+        uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
+        
+        if st.form_submit_button("Save to Database"):
+            if course and title and uploaded_file:
+                file_bytes = uploaded_file.read()  # Converts file to database bytes
+                file_name = uploaded_file.name
+                
+                with conn:
+                    conn.execute("""
+                        INSERT INTO assignment_registry (course_name, assignment_title, pdf_name, pdf_blob)
+                        VALUES (?, ?, ?, ?)
+                    """, (course, title, file_name, file_bytes))
+                st.success(f"Saved {file_name} successfully to DB!")
+                st.rerun()
 
+    st.markdown("---")
+    st.subheader("📚 Saved System Assets")
+
+    # --- PUT THE EXPANDER/RECALL INTEGRATION HERE ---
+    records = conn.execute("SELECT id, course_name, assignment_title, pdf_name FROM assignment_registry").fetchall()
+
+    for rec in records:
+        rec_id, c_name, a_title, f_name = rec
+        
+        with st.expander(f"📄 {c_name} - {a_title}"):
+            st.write(f"Filename: {f_name}")
+            
+            # Recalls the exact bytes from your database when you open the expander tray
+            row = conn.execute("SELECT pdf_blob FROM assignment_registry WHERE id = ?", (rec_id,)).fetchone()
+            
+            if row and row[0]:
+                st.download_button(
+                    label="📥 Restore & Download PDF",
+                    data=row[0],         
+                    file_name=f_name,    
+                    mime="application/pdf",
+                    key=f"dl_{rec_id}"   
+                )
 # =========================================================
 # MODULE 2: DYNAMIC ENGINEERING STUDY MODULES (COURSES)
 # =========================================================
