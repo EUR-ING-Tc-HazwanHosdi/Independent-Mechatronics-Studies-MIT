@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Full Production Build (Fixed Sketchpads & Schema)
+# AIMecha Study OS - Full Production Build (Optimized)
 # =========================================================
 
 import streamlit as st
@@ -151,14 +151,15 @@ def init_db():
         )
         """)
 
-        # Missing Assignment Logs Table Creation Fix
+        # Assignment Logs Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignment_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date_completed TEXT NOT NULL,
             course_name TEXT NOT NULL,
             assignment_name TEXT NOT NULL,
-            notes TEXT
+            notes TEXT,
+            pdf_blob BLOB
         )
         """)
 
@@ -191,11 +192,6 @@ def init_db():
             INSERT INTO profile (id, name, bio, title)
             VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
             """)
-        # Run this once to update your existing table
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
-        except sqlite3.OperationalError:
-            pass
 
 init_db()
 
@@ -208,7 +204,12 @@ def compress_img(image_file):
     if image_file is None:
         return None
     try:
-        img = Image.open(image_file)
+        # Check if it's already bytes or a file-like object
+        if isinstance(image_file, bytes):
+            img = Image.open(io.BytesIO(image_file))
+        else:
+            img = Image.open(image_file)
+            
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img.thumbnail((1000, 1000))
@@ -252,10 +253,8 @@ def multimodal_input(key):
         )
 
     sketch_b64 = None
-    # Process canvas layer vectors safely
     if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
-        # Evaluate if alpha channels have concrete drawn lines
         if np.any(arr[:, :, 3] > 0):  
             try:
                 raw_img = Image.fromarray(arr, 'RGBA')
@@ -339,117 +338,160 @@ if menu == "Dashboard":
     st.divider()
 
     # =========================================================
-    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
+    # DUAL METRIC TRACKING: ACADEMIC & PHYSICAL DATA SPLITS
     # =========================================================
-    st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
-    st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
+    st.subheader("📊 Multi-System Optimization Array")
     
-    col_upload, col_manual = st.columns([1, 1])
+    tab_academic, tab_physical = st.tabs(["📝 MIT OCW Coursework Registry", "🏋️ Physical Load Volume Logs"])
     
-    with col_upload:
-        st.markdown("**Batch CSV Assignment Log Import**")
-        assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
+    with tab_academic:
+        col_upload, col_manual = st.columns([1, 1])
         
-        if assignment_csv is not None:
-            try:
-                uploaded_df = pd.read_csv(assignment_csv)
-                required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
-                if all(col in uploaded_df.columns for col in required_cols):
-                    if st.button("🚀 Commit Assignments to DB"):
-                        with conn:
-                            for _, row in uploaded_df.iterrows():
-                                conn.execute("""
-                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
-                                    VALUES (?, ?, ?, ?)
-                                """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
-                        st.success("Assignment history parsed!")
-                        st.rerun()
-            except Exception as e:
-                st.error(f"CSV Parse Subroutine Fault: {e}")
+        with col_upload:
+            st.markdown("**Batch CSV Assignment Log Import**")
+            assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
+            
+            if assignment_csv is not None:
+                try:
+                    uploaded_df = pd.read_csv(assignment_csv)
+                    required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
+                    if all(col in uploaded_df.columns for col in required_cols):
+                        if st.button("🚀 Commit Assignments to DB"):
+                            with conn:
+                                for _, row in uploaded_df.iterrows():
+                                    conn.execute("""
+                                        INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
+                                        VALUES (?, ?, ?, ?)
+                                    """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
+                            st.success("Assignment history parsed!")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"CSV Parse Subroutine Fault: {e}")
 
-    with col_manual:
-        st.markdown("**Log Completed Task**")
-        
-        # --- PDF UPLOADER TAB INTEGRATION ---
-        tab_text, tab_pdf = st.tabs(["📝 Manual Log", "📄 PDF Upload"])
+        with col_manual:
+            st.markdown("**Log Completed Task**")
+            sub_tab_text, sub_tab_pdf = st.tabs(["📝 Manual Log", "📄 PDF Upload"])
 
-        with tab_text:
-            with st.popover("➕ Log Single Task"):
-                as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
-                course_options = ["General Study Task"]
-                if not df.empty: course_options = df['course_name'].tolist()
-                as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
-                as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1", key="manual_name")
-                as_notes = st.text_area("Notes", key="manual_notes")
-                
-                if st.button("💾 Append Task Node"):
-                    with conn:
-                        conn.execute("""
-                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
-                            VALUES (?, ?, ?, ?)
-                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes))
-                    st.success("Logged!")
-                    st.rerun()
-
-        with tab_pdf:
-            with st.popover("📤 Upload Assignment PDF"):
-                pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
-                course_options = ["General Study Task"]
-                if not df.empty: course_options = df['course_name'].tolist()
-                pdf_course = st.selectbox("Module", course_options, key="pdf_course_sel")
-                pdf_name = st.text_input("Assignment Name", placeholder="e.g., Final Lab Report", key="pdf_name_in")
-                pdf_file = st.file_uploader("Upload PDF Document", type=["pdf"], key="pdf_file_drop")
-                
-                if st.button("🚀 Archive PDF to System"):
-                    if pdf_file is not None and pdf_name:
-                        pdf_bytes = pdf_file.read()
+            with sub_tab_text:
+                with st.popover("➕ Log Single Task"):
+                    as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
+                    course_options = ["General Study Task"]
+                    if not df.empty: course_options = df['course_name'].tolist()
+                    as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
+                    as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1", key="manual_name")
+                    as_notes = st.text_area("Notes", key="manual_notes")
+                    
+                    if st.button("💾 Append Task Node"):
                         with conn:
                             conn.execute("""
-                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
                                 VALUES (?, ?, ?, ?)
-                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
-                        st.success("PDF Encrypted and Stored.")
+                            """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes))
+                        st.success("Logged!")
                         st.rerun()
-                    else:
-                        st.error("Please provide a name and a file.")
 
-    # Master Task Grid Display
-    st.markdown("### Master Coursework Submission Registry")
-    try:
-        db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
-    except sqlite3.OperationalError:
-        db_assignment_logs = pd.DataFrame()
-    
-    if db_assignment_logs.empty:
-        st.info("No assignment logs committed inside the runtime registry yet.")
-    else:
-        # CUSTOM ROW-BASED DISPLAY FOR PDF ACCESS
-        for _, row in db_assignment_logs.iterrows():
-            with st.container(border=True):
-                cols = st.columns([1, 2, 2, 1])
-                cols[0].write(f"📅 {row['date_completed']}")
-                cols[1].write(f"🏷️ **{row['course_name']}**")
-                cols[2].write(f"📘 {row['assignment_name']}")
-                
-                if 'pdf_blob' in row and row['pdf_blob'] is not None:
-                    cols[3].download_button(
-                        label="📥 View PDF",
-                        data=row['pdf_blob'],
-                        file_name=f"{row['assignment_name']}.pdf",
-                        mime="application/pdf",
-                        key=f"dl_{row['id']}"
-                    )
-                else:
-                    cols[3].caption("No PDF Attached")
+            with sub_tab_pdf:
+                with st.popover("📤 Upload Assignment PDF"):
+                    pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
+                    course_options = ["General Study Task"]
+                    if not df.empty: course_options = df['course_name'].tolist()
+                    pdf_course = st.selectbox("Module", course_options, key="pdf_course_sel")
+                    pdf_name = st.text_input("Assignment Name", placeholder="e.g., Final Lab Report", key="pdf_name_in")
+                    pdf_file = st.file_uploader("Upload PDF Document", type=["pdf"], key="pdf_file_drop")
+                    
+                    if st.button("🚀 Archive PDF to System"):
+                        if pdf_file is not None and pdf_name:
+                            pdf_bytes = pdf_file.read()
+                            with conn:
+                                conn.execute("""
+                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
+                                    VALUES (?, ?, ?, ?)
+                                """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
+                            st.success("PDF Encrypted and Stored.")
+                            st.rerun()
+                        else:
+                            st.error("Please provide a name and a file.")
+
+        # Master Task Grid Display
+        st.markdown("### Master Coursework Submission Registry")
+        try:
+            db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
+        except sqlite3.OperationalError:
+            db_assignment_logs = pd.DataFrame()
         
-        with st.popover("🗑️ Purge Assignment Records"):
-            st.warning("This action removes logged metrics.")
-            target_id = st.number_input("Target Assignment ID to Erase", min_value=1, step=1)
-            if st.button("🚨 Purge Selected Task", key="single_as_purge_btn"):
-                with conn:
-                    conn.execute("DELETE FROM assignment_logs WHERE id=?", (target_id,))
-                st.success(f"Assignment ID {target_id} removed.")
-                st.rerun()
+        if db_assignment_logs.empty:
+            st.info("No assignment logs committed inside the runtime registry yet.")
+        else:
+            for _, row in db_assignment_logs.iterrows():
+                with st.container(border=True):
+                    cols = st.columns([1, 2, 2, 1])
+                    cols[0].write(f"📅 {row['date_completed']}")
+                    cols[1].write(f"🏷️ **{row['course_name']}**")
+                    cols[2].write(f"📘 {row['assignment_name']}")
+                    
+                    if 'pdf_blob' in row and row['pdf_blob'] is not None:
+                        cols[3].download_button(
+                            label="📥 View PDF",
+                            data=row['pdf_blob'],
+                            file_name=f"{row['assignment_name']}.pdf",
+                            mime="application/pdf",
+                            key=f"dl_{row['id']}"
+                        )
+                    else:
+                        cols[3].caption("No PDF Attached")
+            
+            with st.popover("🗑️ Purge Assignment Records"):
+                st.warning("This action removes logged metrics.")
+                target_id = st.number_input("Target Assignment ID to Erase", min_value=1, step=1)
+                if st.button("🚨 Purge Selected Task", key="single_as_purge_btn"):
+                    with conn:
+                        conn.execute("DELETE FROM assignment_logs WHERE id=?", (target_id,))
+                    st.success(f"Assignment ID {target_id} removed.")
+                    st.rerun()
+
+    with tab_physical:
+        # =========================================================
+        # RECONSTRUCTED CRITICAL EXERCISE LOGGER SUBSYSTEM
+        # =========================================================
+        st.markdown("### 🏋️ Bio-Mechanical Performance Tracking")
+        ex_col1, ex_col2 = st.columns([1, 2])
+        
+        with ex_col1:
+            st.markdown("**Commit Optimization Vector**")
+            with st.form("exercise_logging_form", clear_on_submit=True):
+                ex_date = st.date_input("Workout Date", datetime.now())
+                ex_split = st.selectbox("Target Neuromuscular Split", ["Push (Chest/Tri)", "Pull (Back/Bi)", "Legs (Anterior/Posterior)", "Core/Cardio Conditioning", "Full Body Synthesis"])
+                ex_vol = st.number_input("Calculated Load Volume (kg / lbs)", min_value=0.0, step=50.0, help="Total Reps x Sets x Load Weight")
+                ex_notes = st.text_area("Biometric Strain Notes / Fatigue Indicators")
+                
+                if st.form_submit_button("⚡ Append Load Log"):
+                    with conn:
+                        conn.execute("""
+                            INSERT INTO exercise_logs (date, exercise_split, load_volume, notes)
+                            VALUES (?, ?, ?, ?)
+                        """, (ex_date.strftime("%Y-%m-%d"), ex_split, ex_vol, ex_notes))
+                    st.success("Physical state committed.")
+                    st.rerun()
+                    
+        with ex_col2:
+            st.markdown("**Historical Biomechanical Ledger**")
+            try:
+                ex_df = pd.read_sql_query("SELECT * FROM exercise_logs ORDER BY date DESC, id DESC", conn)
+            except sqlite3.OperationalError:
+                ex_df = pd.DataFrame()
+                
+            if ex_df.empty:
+                st.info("No mechanical strain records logged inside this node yet.")
+            else:
+                st.dataframe(ex_df, use_container_width=True, hide_index=True)
+                
+                with st.popover("🗑️ Purge Physical Record"):
+                    target_ex_id = st.number_input("Target Workout ID to Wipe", min_value=1, step=1)
+                    if st.button("🚨 Purge Workout Block", key="single_ex_purge_btn"):
+                        with conn:
+                            conn.execute("DELETE FROM exercise_logs WHERE id=?", (target_ex_id,))
+                        st.success(f"Workout Data ID {target_ex_id} wiped.")
+                        st.rerun()
 
 # =========================================================
 # MODULE 2: DYNAMIC ENGINEERING STUDY MODULES (COURSES)
@@ -502,9 +544,8 @@ elif menu == "Courses":
                     if note_text.strip() == "" and note_img is None:
                         st.error("Cannot commit an empty log.")
                     else:
-                        img_blob = None
-                        if note_img:
-                            img_blob = note_img.read()
+                        # Fixed: Forced image compression step here to prevent SQLite DB storage bloating
+                        img_blob = compress_img(note_img) if note_img else None
                             
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                         with conn:
@@ -518,22 +559,17 @@ elif menu == "Courses":
                 st.divider()
                 st.subheader("📂 Saved Documentation Stack")
 
-                # =========================================================
-                # EXTENDED NOTES OPERATIONS PANEL (EDIT & DELETE INLINE)
-                # =========================================================
                 course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ? ORDER BY id DESC", conn, params=(row['id'],))
                 if course_notes.empty:
                     st.caption("No technical logs attached to this module sequence.")
                 else:
                     for _, n in course_notes.iterrows():
                         with st.container(border=True):
-                            # Control Header Container for individual Note Nodes
                             nh1, nh2 = st.columns([5, 1])
                             with nh1:
                                 st.caption(f"🕒 Registered: {n['created_at']} | Latency Modification: {n['updated_at'] or 'None'}")
                             
                             with nh2:
-                                # Stacked action widgets to preserve horizontal grid space
                                 inline_edit_col, inline_del_col = st.columns(2)
                                 
                                 with inline_edit_col:
@@ -563,7 +599,6 @@ elif menu == "Courses":
                                         st.success("Purged.")
                                         st.rerun()
 
-                            # Body rendering frame below control layer
                             if n['note']:
                                 st.markdown(n['note'])
                             if n['image_blob']:
@@ -742,18 +777,3 @@ elif menu == "System Recovery":
                 )
             except Exception as e:
                 st.error(f"Backup serialization breakdown: {e}")
-                
-    with b2:
-        st.subheader("System Restoration Pipeline")
-        restore_file = st.file_uploader("Drop Backup File for System Injection (.db)", type=["db"])
-        if restore_file is not None:
-            if st.button("🚨 Overwrite System Core Matrix"):
-                try:
-                    conn.close()
-                    with open(DB_NAME, "wb") as f:
-                        f.write(restore_file.getbuffer())
-                    st.cache_resource.clear()
-                    st.success("System architecture restoration successful. Reloading app processes...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Restoration pipeline failure: {e}")
