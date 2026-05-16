@@ -435,64 +435,61 @@ if menu == "Dashboard":
                         st.success("PDF Encrypted and Stored in Repository.")
                         st.rerun()
 
-    # 3. DISPLAY LAYER: Full-width registry layout placed out of columns to prevent squeezing layout cards
-    st.markdown("### Master Coursework Submission Registry")
+    # =========================================================
+    # RECALL ENGINE: MASTER REGISTRY DISPLAY
+    # =========================================================
+    st.markdown("### 🗄️ Local System Archive (Master Registry)")
     
     if db_assignment_logs.empty:
-        st.info("No active academic assignment entries detected inside the system infrastructure registry.")
+        st.info("No active academic assignment entries detected in local storage.")
     else:
+        # This loop pulls the data directly from your local SQLite file
         for _, row in db_assignment_logs.iterrows():
             with st.container(border=True):
-                # Metric header line layout
-                cols = st.columns([1, 2, 3, 1])
-                cols[0].write(f"📅 **{row['date_completed']}**")
-                cols[1].write(f"🏷️ `{row['course_name']}`")
-                cols[2].write(f"📘 **{row['assignment_name']}**")
+                # 1. METADATA HEADER
+                h_col1, h_col2, h_col3, h_col4 = st.columns([1, 2, 3, 1])
+                h_col1.write(f"📅 **{row['date_completed']}**")
+                h_col2.code(row['course_name'])
+                h_col3.markdown(f"📘 **{row['assignment_name']}**")
                 
-                with cols[3]:
-                    inline_as_edit, inline_as_del = st.columns(2)
-                    with inline_as_edit:
-                        with st.popover("✏️", help="Modify textual elements"):
-                            st.markdown(f"**Modify Assignment Text [ID: {row['id']}]**")
-                            up_as_name = st.text_input("Edit Assignment Title", value=row['assignment_name'], key=f"as_name_ed_{row['id']}")
-                            up_as_notes = st.text_area("Edit Explanatory Context", value=row['notes'] or "", key=f"as_notes_ed_{row['id']}")
-                            if st.button("💾 Push Mutation", key=f"save_as_ed_{row['id']}"):
-                                with conn:
-                                    conn.execute("""
-                                        UPDATE assignment_logs 
-                                        SET assignment_name = ?, notes = ? 
-                                        WHERE id = ?
-                                    """, (up_as_name, up_as_notes, row['id']))
-                                st.rerun()
-                    with inline_as_del:
-                        if st.button("🗑️", key=f"wipe_as_{row['id']}", help="Wipe assignment log"):
-                            with conn:
-                                conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
-                            st.rerun()
+                # Inline Delete/Edit actions
+                with h_col4:
+                    act_edit, act_del = st.columns(2)
+                    if act_del.button("🗑️", key=f"del_rec_{row['id']}"):
+                        with conn:
+                            conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
+                        st.rerun()
 
-                # Render contextual details if available
+                # 2. RECALL TEXTUAL NOTES
                 if row['notes'] and str(row['notes']).strip() != "":
-                    st.markdown(f"**Notes:** {row['notes']}")
+                    st.markdown(f"**Technical Logs:**")
+                    st.info(row['notes'])
 
-                # Inline Image/Sketch Grid Logic
-                img_c1, img_c2 = st.columns(2)
+                # 3. RECALL VISUAL BINARIES (Images and Sketches)
+                img_col1, img_col2 = st.columns(2)
                 
+                # Decodes sketch from Base64 string stored in DB
                 if 'sketch_data' in row and row['sketch_data']:
                     try:
-                        img_c1.image(base64.b64decode(row['sketch_data']), caption="Assignment Design Sketch / Math Workflow")
-                    except Exception:
-                        pass
-                        
+                        img_col1.image(base64.b64decode(row['sketch_data']), 
+                                      caption="Recalled Engineering Sketch", 
+                                      use_container_width=True)
+                    except: pass
+
+                # Recalls raw image bytes from BLOB column
                 if 'image_blob' in row and row['image_blob']:
-                    img_c2.image(row['image_blob'], caption="Attached Hardware Spec Snapshot / Proof Image")
-                    
+                    img_col2.image(row['image_blob'], 
+                                   caption="Recalled Hardware Spec/Reference", 
+                                   use_container_width=True)
+
+                # 4. RECALL PDF DOCUMENTS
                 if 'pdf_blob' in row and row['pdf_blob'] is not None:
                     st.download_button(
-                        label="📥 Download Attached Verification PDF Deliverable",
+                        label="📥 Download Local PDF Copy",
                         data=row['pdf_blob'],
-                        file_name=f"{row['assignment_name']}.pdf",
+                        file_name=f"LOCAL_RECALL_{row['assignment_name']}.pdf",
                         mime="application/pdf",
-                        key=f"dl_pdf_node_{row['id']}"
+                        key=f"dl_pdf_{row['id']}"
                     )
 
 # =========================================================
