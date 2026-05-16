@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Hardened Production Version
+# AIMecha Study OS - Full Hardened Production Version
 # =========================================================
 
 import streamlit as st
@@ -111,7 +111,7 @@ def init_db():
         )
         """)
 
-        # Notes Table (with relational structural bindings)
+        # Notes Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -194,7 +194,7 @@ def multimodal_input(key):
     """ Renders the unified text, canvas drawing, and local file attachment workspace. """
     text = st.text_area(
         "Technical Notes / Observations",
-        key=f"text_{key}",
+        key=f"text_input_{key}",
         height=120,
         placeholder="Input engineering constraints, mathematics formulas, or log telemetry updates here..."
     )
@@ -202,6 +202,7 @@ def multimodal_input(key):
     c1, c2 = st.columns(2)
     with c1:
         st.caption("🎨 Engineering Sketchpad")
+        # Hardened state engine utilizing isolated context keys
         canvas = st_canvas(
             fill_color="rgba(0,212,255,0.1)",
             stroke_width=3,
@@ -210,7 +211,7 @@ def multimodal_input(key):
             height=250,
             width=500,
             drawing_mode="freedraw",
-            key=f"canvas_{key}"
+            key=f"canvas_component_{key}"
         )
 
     with c2:
@@ -218,11 +219,11 @@ def multimodal_input(key):
         img = st.file_uploader(
             "Upload Image Spec",
             type=["png", "jpg", "jpeg"],
-            key=f"img_{key}"
+            key=f"img_upload_{key}"
         )
 
     sketch_b64 = None
-    if canvas.image_data is not None:
+    if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
         if np.any(arr[:, :, 3] > 0):  # Check if canvas contains active brush strokes
             try:
@@ -357,17 +358,20 @@ elif menu == "Courses":
                 
                 # Add Note Workspace within Course Expandable View
                 st.subheader("Add Micro-Documentation Log")
-                txt, sk, im = multimodal_input(f"course_{row['id']}")
+                txt, sk, im = multimodal_input(f"course_module_entry_{row['id']}")
                 
                 if st.button("🚀 Commit Entry to Module Stack", key=f"btn_n_{row['id']}"):
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    with conn:
-                        conn.execute("""
-                        INSERT INTO notes (course_id, note, sketch_data, image_blob, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """, (row['id'], txt, sk, im, timestamp, timestamp))
-                    st.success("Entry logged successfully!")
-                    st.rerun()
+                    if txt.strip() == "" and sk is None and im is None:
+                        st.error("Cannot commit an empty modular log entry.")
+                    else:
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        with conn:
+                            conn.execute("""
+                            INSERT INTO notes (course_id, note, sketch_data, image_blob, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """, (row['id'], txt, sk, im, timestamp, timestamp))
+                        st.success("Entry logged successfully!")
+                        st.rerun()
                 
                 st.divider()
                 
@@ -415,17 +419,22 @@ elif menu == "Journal":
     
     with st.expander("➕ Open New Chronological System Entry Channel", expanded=False):
         j_title = st.text_input("Log Diagnostic Target Title", "Daily System Engineering Iteration Report")
-        txt, sk, im = multimodal_input("journal_main")
         
-        if st.button("🚀 Push Log Entry to Master Stream"):
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            with conn:
-                conn.execute("""
-                INSERT INTO journal (title, entry, sketch_data, image_blob, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, (j_title, txt, sk, im, timestamp, timestamp))
-            st.success("Journal update streamed to system storage array.")
-            st.rerun()
+        # Hardened master identifier block for running system sketches
+        txt, sk, im = multimodal_input("journal_master_channel")
+        
+        if st.button("🚀 Push Log Entry to Master Stream", key="commit_journal_btn"):
+            if txt.strip() == "" and sk is None and im is None:
+                st.error("Cannot commit an empty system journal entry.")
+            else:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                with conn:
+                    conn.execute("""
+                    INSERT INTO journal (title, entry, sketch_data, image_blob, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, (j_title, txt, sk, im, timestamp, timestamp))
+                st.success("Journal update streamed to system storage array.")
+                st.rerun()
             
     st.divider()
     search_j = st.text_input("🔍 Filter Master Journal Stream By String Value", placeholder="Search records...")
@@ -541,7 +550,7 @@ elif menu == "Add Course":
         categories = ["Programming", "Artificial Intelligence", "Mechatronics", "Electronics", "Control Systems", "Robotics", "Computer Vision", "Embedded Systems"]
         c_cat = st.selectbox("Structural Operational Field Classification Category", categories)
         
-        if st.form_submit_form_button("🚀 Inject Course Module into System Array"):
+        if st.form_submit_button("🚀 Inject Course Module into System Array"):
             if c_name.strip() == "":
                 st.error("Operation Denied: Course Name cannot consist of empty parameters.")
             else:
