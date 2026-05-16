@@ -1,3 +1,8 @@
+# =========================================================
+# AIMecha Study OS
+# Full Production Version
+# =========================================================
+
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -6,17 +11,17 @@ import base64
 import io
 import os
 import numpy as np
-from streamlit_drawable_canvas import st_canvas
 from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 
 # =========================================================
-# CONFIGURATION
+# CONFIG
 # =========================================================
 
 st.set_page_config(
     page_title="AIMecha Study OS",
-    layout="wide",
-    page_icon="⚙️"
+    page_icon="⚙️",
+    layout="wide"
 )
 
 DB_NAME = "aimecha_study_os.db"
@@ -24,7 +29,7 @@ LOGO_PATH = "AIMECHA.png"
 MIT_LOGO_PATH = "MIT-OCW.png"
 
 # =========================================================
-# GLOBAL STYLING
+# CUSTOM UI
 # =========================================================
 
 st.markdown("""
@@ -44,11 +49,6 @@ div.stButton > button {
     border: 1px solid #00d4ff;
     background: #0f172a;
     color: white;
-    width: 100%;
-}
-
-div[data-baseweb="input"] {
-    border-radius: 12px;
 }
 
 div[data-testid="stMetric"] {
@@ -66,17 +66,18 @@ div[data-testid="stMetric"] {
 }
 
 .course-card {
-    background: rgba(255,255,255,0.02);
-    padding: 15px;
+    background: rgba(255,255,255,0.03);
     border-radius: 15px;
+    padding: 20px;
     border: 1px solid #1e293b;
+    margin-bottom: 15px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# DATABASE CONNECTION
+# DATABASE
 # =========================================================
 
 @st.cache_resource
@@ -88,10 +89,11 @@ def get_conn():
 conn = get_conn()
 
 # =========================================================
-# DATABASE INITIALIZATION
+# INITIALIZE DATABASE
 # =========================================================
 
 def init_db():
+
     c = conn.cursor()
 
     c.execute("""
@@ -110,7 +112,8 @@ def init_db():
         note TEXT,
         sketch_data TEXT,
         image_blob BLOB,
-        created_at TEXT
+        created_at TEXT,
+        updated_at TEXT
     )
     """)
 
@@ -121,7 +124,8 @@ def init_db():
         entry TEXT,
         sketch_data TEXT,
         image_blob BLOB,
-        created_at TEXT
+        created_at TEXT,
+        updated_at TEXT
     )
     """)
 
@@ -136,7 +140,7 @@ def init_db():
     """)
 
     c.execute("""
-    INSERT OR IGNORE INTO profile 
+    INSERT OR IGNORE INTO profile
     (id, name, bio, title)
     VALUES
     (
@@ -152,7 +156,7 @@ def init_db():
 init_db()
 
 # =========================================================
-# UTILITY FUNCTIONS
+# UTILITIES
 # =========================================================
 
 def compress_img(image_file):
@@ -189,9 +193,9 @@ def multimodal_input(key):
         height=120
     )
 
-    col1, col2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-    with col1:
+    with c1:
 
         st.caption("🎨 Engineering Sketchpad")
 
@@ -206,19 +210,15 @@ def multimodal_input(key):
             key=f"canvas_{key}"
         )
 
-    with col2:
+    with c2:
 
         st.caption("🖼️ Upload Reference Image")
 
         img = st.file_uploader(
-            "Upload Reference",
+            "Upload Image",
             type=["png", "jpg", "jpeg"],
             key=f"img_{key}"
         )
-
-    # =====================================================
-    # FIXED SKETCH SAVING
-    # =====================================================
 
     sketch_b64 = None
 
@@ -226,7 +226,6 @@ def multimodal_input(key):
 
         arr = canvas.image_data.astype("uint8")
 
-        # Detect actual drawing
         if np.any(arr[:, :, 3] > 0):
 
             raw_img = Image.fromarray(arr, 'RGBA')
@@ -260,16 +259,13 @@ menu = st.sidebar.radio(
         "Journal",
         "Professional CV",
         "MIT Learning Hub",
+        "Management Center",
         "Add Course",
         "System Recovery"
     ]
 )
 
 st.sidebar.divider()
-
-# =========================================================
-# MIT QUICK ACCESS HUB
-# =========================================================
 
 if os.path.exists(MIT_LOGO_PATH):
     st.sidebar.image(MIT_LOGO_PATH, width=180)
@@ -283,26 +279,14 @@ mit_courses = {
     "Linear Algebra":
     "https://ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/",
 
-    "Single Variable Calculus":
-    "https://ocw.mit.edu/courses/18-01sc-single-variable-calculus-fall-2010/",
-
     "Signals & Systems":
     "https://ocw.mit.edu/courses/res-6-007-signals-and-systems-spring-2011/",
 
     "Feedback Control":
     "https://ocw.mit.edu/courses/6-302-feedback-systems-spring-2007/",
 
-    "Circuits & Electronics":
-    "https://ocw.mit.edu/courses/6-002-circuits-and-electronics-spring-2007/",
-
-    "Engineering Dynamics":
-    "https://ocw.mit.edu/courses/2-003sc-engineering-dynamics-fall-2011/",
-
     "Robotics":
     "https://ocw.mit.edu/courses/2-12-introduction-to-robotics-fall-2005/",
-
-    "Underactuated Robotics":
-    "https://ocw.mit.edu/courses/6-832-underactuated-robotics-spring-2009/",
 
     "Deep Learning":
     "https://introtodeeplearning.com/"
@@ -328,17 +312,17 @@ if menu == "Dashboard":
         conn
     )
 
-    total_notes = pd.read_sql_query(
+    notes_count = pd.read_sql_query(
         "SELECT COUNT(*) FROM notes",
         conn
     ).iloc[0,0]
 
-    total_journal = pd.read_sql_query(
+    journal_count = pd.read_sql_query(
         "SELECT COUNT(*) FROM journal",
         conn
     ).iloc[0,0]
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
 
     c1.metric("Modules", len(df))
 
@@ -348,23 +332,26 @@ if menu == "Dashboard":
     )
 
     c2.metric(
-        "Completion Rate",
+        "Completion",
         f"{completion:.1f}%"
     )
 
-    c3.metric("Technical Notes", total_notes)
+    c3.metric(
+        "Technical Notes",
+        notes_count
+    )
 
-    c4.metric("Engineering Logs", total_journal)
+    c4.metric(
+        "Journal Logs",
+        journal_count
+    )
 
     st.divider()
 
-    st.subheader("🚀 AIMecha OS Overview")
-
     st.info("""
-    AIMecha OS is a multimodal engineering knowledge
-    management system designed for Industrial AI,
-    Robotics, Automation, Embedded Systems,
-    and Mechatronics Engineering studies.
+    AIMecha OS is a multimodal engineering
+    knowledge management system for Industrial AI,
+    Robotics, Automation, and Mechatronics studies.
     """)
 
 # =========================================================
@@ -399,6 +386,110 @@ elif menu == "Courses":
                 expanded=False
             ):
 
+                # =========================================
+                # COURSE MANAGEMENT
+                # =========================================
+
+                m1, m2 = st.columns(2)
+
+                with m1:
+
+                    with st.popover("✏️ Edit Module"):
+
+                        new_name = st.text_input(
+                            "Module Name",
+                            value=row['course_name'],
+                            key=f"edit_course_name_{row['id']}"
+                        )
+
+                        categories = [
+                            "Programming",
+                            "Artificial Intelligence",
+                            "Mechatronics",
+                            "Electronics",
+                            "Control Systems",
+                            "Robotics",
+                            "Computer Vision",
+                            "Embedded Systems"
+                        ]
+
+                        new_cat = st.selectbox(
+                            "Category",
+                            categories,
+                            index=categories.index(
+                                row['category']
+                            ) if row['category'] in categories else 0,
+                            key=f"edit_course_cat_{row['id']}"
+                        )
+
+                        if st.button(
+                            "💾 Save Changes",
+                            key=f"save_course_{row['id']}"
+                        ):
+
+                            conn.execute(
+                                """
+                                UPDATE courses
+                                SET
+                                course_name=?,
+                                category=?
+                                WHERE id=?
+                                """,
+                                (
+                                    new_name,
+                                    new_cat,
+                                    row['id']
+                                )
+                            )
+
+                            conn.commit()
+
+                            st.success(
+                                "Module Updated!"
+                            )
+
+                            st.rerun()
+
+                with m2:
+
+                    with st.popover("🗑️ Delete Module"):
+
+                        st.warning("""
+                        This deletes:
+                        - Module
+                        - Notes
+                        - Associated data
+                        """)
+
+                        if st.button(
+                            "🚨 Confirm Delete",
+                            key=f"delete_course_{row['id']}"
+                        ):
+
+                            conn.execute(
+                                """
+                                DELETE FROM notes
+                                WHERE course_id=?
+                                """,
+                                (row['id'],)
+                            )
+
+                            conn.execute(
+                                """
+                                DELETE FROM courses
+                                WHERE id=?
+                                """,
+                                (row['id'],)
+                            )
+
+                            conn.commit()
+
+                            st.success(
+                                "Module Deleted!"
+                            )
+
+                            st.rerun()
+
                 completed = st.checkbox(
                     "Mark Completed",
                     value=bool(row['completed']),
@@ -423,13 +514,15 @@ elif menu == "Courses":
 
                     st.rerun()
 
+                st.divider()
+
                 txt, sk, im = multimodal_input(
                     f"course_{row['id']}"
                 )
 
                 if st.button(
                     "💾 Save Technical Note",
-                    key=f"save_{row['id']}"
+                    key=f"save_note_{row['id']}"
                 ):
 
                     conn.execute(
@@ -440,15 +533,19 @@ elif menu == "Courses":
                             note,
                             sketch_data,
                             image_blob,
-                            created_at
+                            created_at,
+                            updated_at
                         )
-                        VALUES (?,?,?,?,?)
+                        VALUES (?,?,?,?,?,?)
                         """,
                         (
                             row['id'],
                             txt,
                             sk,
                             im,
+                            datetime.now().strftime(
+                                "%Y-%m-%d %H:%M"
+                            ),
                             datetime.now().strftime(
                                 "%Y-%m-%d %H:%M"
                             )
@@ -483,9 +580,77 @@ elif menu == "Courses":
 
                     with st.container(border=True):
 
-                        st.caption(
-                            f"📅 {note['created_at']}"
+                        top1, top2, top3 = st.columns([6,1,1])
+
+                        top1.caption(
+                            f"""
+                            📅 Created:
+                            {note['created_at']}
+                            """
                         )
+
+                        with top2:
+
+                            with st.popover("✏️"):
+
+                                edit_note = st.text_area(
+                                    "Edit Note",
+                                    value=note['note'],
+                                    key=f"edit_note_{note['id']}"
+                                )
+
+                                if st.button(
+                                    "💾 Update",
+                                    key=f"update_note_{note['id']}"
+                                ):
+
+                                    conn.execute(
+                                        """
+                                        UPDATE notes
+                                        SET
+                                        note=?,
+                                        updated_at=?
+                                        WHERE id=?
+                                        """,
+                                        (
+                                            edit_note,
+                                            datetime.now().strftime(
+                                                "%Y-%m-%d %H:%M"
+                                            ),
+                                            note['id']
+                                        )
+                                    )
+
+                                    conn.commit()
+
+                                    st.success(
+                                        "Note Updated!"
+                                    )
+
+                                    st.rerun()
+
+                        with top3:
+
+                            if st.button(
+                                "🗑️",
+                                key=f"delete_note_{note['id']}"
+                            ):
+
+                                conn.execute(
+                                    """
+                                    DELETE FROM notes
+                                    WHERE id=?
+                                    """,
+                                    (note['id'],)
+                                )
+
+                                conn.commit()
+
+                                st.success(
+                                    "Note Deleted!"
+                                )
+
+                                st.rerun()
 
                         if note['note']:
                             st.write(note['note'])
@@ -498,14 +663,14 @@ elif menu == "Courses":
                                 base64.b64decode(
                                     note['sketch_data']
                                 ),
-                                caption="Sketch"
+                                caption="Engineering Sketch"
                             )
 
                         if note['image_blob']:
 
                             n2.image(
                                 note['image_blob'],
-                                caption="Reference"
+                                caption="Reference Image"
                             )
 
 # =========================================================
@@ -530,7 +695,9 @@ elif menu == "Journal":
             "journal_main"
         )
 
-        if st.button("🚀 Commit to Journal"):
+        if st.button(
+            "🚀 Commit to Journal"
+        ):
 
             conn.execute(
                 """
@@ -540,15 +707,19 @@ elif menu == "Journal":
                     entry,
                     sketch_data,
                     image_blob,
-                    created_at
+                    created_at,
+                    updated_at
                 )
-                VALUES (?,?,?,?,?)
+                VALUES (?,?,?,?,?,?)
                 """,
                 (
                     j_title,
                     txt,
                     sk,
                     im,
+                    datetime.now().strftime(
+                        "%Y-%m-%d %H:%M"
+                    ),
                     datetime.now().strftime(
                         "%Y-%m-%d %H:%M"
                     )
@@ -587,20 +758,96 @@ elif menu == "Journal":
 
         with st.container(border=True):
 
-            st.subheader(j['title'])
+            jh1, jh2, jh3 = st.columns([6,1,1])
+
+            jh1.subheader(j['title'])
+
+            with jh2:
+
+                with st.popover("✏️"):
+
+                    edit_title = st.text_input(
+                        "Title",
+                        value=j['title'],
+                        key=f"edit_j_title_{j['id']}"
+                    )
+
+                    edit_entry = st.text_area(
+                        "Entry",
+                        value=j['entry'],
+                        key=f"edit_j_entry_{j['id']}"
+                    )
+
+                    if st.button(
+                        "💾 Save Journal",
+                        key=f"save_journal_{j['id']}"
+                    ):
+
+                        conn.execute(
+                            """
+                            UPDATE journal
+                            SET
+                            title=?,
+                            entry=?,
+                            updated_at=?
+                            WHERE id=?
+                            """,
+                            (
+                                edit_title,
+                                edit_entry,
+                                datetime.now().strftime(
+                                    "%Y-%m-%d %H:%M"
+                                ),
+                                j['id']
+                            )
+                        )
+
+                        conn.commit()
+
+                        st.success(
+                            "Journal Updated!"
+                        )
+
+                        st.rerun()
+
+            with jh3:
+
+                if st.button(
+                    "🗑️",
+                    key=f"delete_journal_{j['id']}"
+                ):
+
+                    conn.execute(
+                        """
+                        DELETE FROM journal
+                        WHERE id=?
+                        """,
+                        (j['id'],)
+                    )
+
+                    conn.commit()
+
+                    st.success(
+                        "Journal Deleted!"
+                    )
+
+                    st.rerun()
 
             st.caption(
-                f"🕒 {j['created_at']}"
+                f"""
+                🕒 Created:
+                {j['created_at']}
+                """
             )
 
             if j['entry']:
                 st.write(j['entry'])
 
-            j1, j2 = st.columns(2)
+            jc1, jc2 = st.columns(2)
 
             if j['sketch_data']:
 
-                j1.image(
+                jc1.image(
                     base64.b64decode(
                         j['sketch_data']
                     ),
@@ -609,7 +856,7 @@ elif menu == "Journal":
 
             if j['image_blob']:
 
-                j2.image(
+                jc2.image(
                     j['image_blob'],
                     caption="Reference"
                 )
@@ -649,10 +896,12 @@ elif menu == "Professional CV":
 
         u_img = st.file_uploader(
             "Upload Profile Picture",
-            type=['jpg','jpeg','png']
+            type=["jpg","jpeg","png"]
         )
 
-        if st.button("💾 Update Profile"):
+        if st.button(
+            "💾 Update Profile"
+        ):
 
             img_v = prof['profile_img']
 
@@ -685,45 +934,25 @@ elif menu == "Professional CV":
 
             st.rerun()
 
-    # =====================================================
-    # HERO SECTION
-    # =====================================================
+    st.markdown(f"""
+    <div class="header-card">
 
-    st.markdown(
-        f"""
-        <div class="header-card">
+    <h1 style="font-size:48px;">
+    {prof['name']}
+    </h1>
 
-        <h1 style="
-        font-size:48px;
-        color:white;
-        margin-bottom:0;
-        ">
-        {prof['name']}
-        </h1>
+    <h3 style="color:#00d4ff;">
+    {prof['title']}
+    </h3>
 
-        <h3 style="
-        color:#00d4ff;
-        ">
-        {prof['title']}
-        </h3>
+    <p style="font-size:18px;">
+    {prof['bio']}
+    </p>
 
-        <p style="
-        font-size:18px;
-        color:#cbd5e1;
-        ">
-        {prof['bio']}
-        </p>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
-
-    # =====================================================
-    # PROFILE IMAGE
-    # =====================================================
 
     p1, p2 = st.columns([1,3])
 
@@ -751,8 +980,7 @@ elif menu == "Professional CV":
             ">
             👤
             </div>
-            """,
-            unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
     with p2:
 
@@ -762,13 +990,13 @@ elif menu == "Professional CV":
 
         st.info("""
         Independent Studies in Industrial AI,
-        Automation, Robotics, Control Systems,
-        Computer Vision, and Mechatronics
+        Robotics, Automation, Control Systems,
+        Embedded Systems, and Mechatronics
         Engineering via MIT OpenCourseWare.
         """)
 
         st.subheader(
-            "⚡ Engineering Focus Areas"
+            "⚡ Engineering Focus"
         )
 
         st.markdown("""
@@ -782,10 +1010,6 @@ elif menu == "Professional CV":
 
     st.divider()
 
-    # =====================================================
-    # METRICS
-    # =====================================================
-
     courses_df = pd.read_sql_query(
         "SELECT * FROM courses",
         conn
@@ -793,7 +1017,7 @@ elif menu == "Professional CV":
 
     total_courses = len(courses_df)
 
-    completed_courses = len(
+    completed = len(
         courses_df[
             courses_df['completed'] == 1
         ]
@@ -811,90 +1035,13 @@ elif menu == "Professional CV":
 
     s1,s2,s3,s4 = st.columns(4)
 
-    s1.metric(
-        "Modules",
-        total_courses
-    )
-
-    s2.metric(
-        "Completed",
-        completed_courses
-    )
-
-    s3.metric(
-        "Technical Notes",
-        notes_count
-    )
-
-    s4.metric(
-        "Engineering Logs",
-        journal_count
-    )
-
-    st.divider()
-
-    # =====================================================
-    # COMPETENCY MATRIX
-    # =====================================================
-
-    st.subheader(
-        "🛠️ Engineering Competency Matrix"
-    )
-
-    if not courses_df.empty:
-
-        stats = (
-            courses_df
-            .groupby('category')['completed']
-            .mean() * 100
-        )
-
-        for cat, val in stats.items():
-
-            st.write(f"### {cat}")
-
-            st.progress(val/100)
-
-            st.caption(
-                f"{val:.0f}% competency progression"
-            )
-
-    st.divider()
-
-    # =====================================================
-    # EXPORT
-    # =====================================================
-
-    cv_export = f"""
-AIMecha Engineering Portfolio
-
-Name:
-{prof['name']}
-
-Title:
-{prof['title']}
-
-Professional Summary:
-{prof['bio']}
-
-Modules Completed:
-{completed_courses}/{total_courses}
-
-Technical Notes:
-{notes_count}
-
-Engineering Logs:
-{journal_count}
-"""
-
-    st.download_button(
-        "📄 Download Engineering Portfolio",
-        data=cv_export,
-        file_name="AIMecha_Engineering_Portfolio.txt"
-    )
+    s1.metric("Modules", total_courses)
+    s2.metric("Completed", completed)
+    s3.metric("Technical Notes", notes_count)
+    s4.metric("Journal Logs", journal_count)
 
 # =========================================================
-# MIT LEARNING HUB
+# MIT HUB
 # =========================================================
 
 elif menu == "MIT Learning Hub":
@@ -902,7 +1049,7 @@ elif menu == "MIT Learning Hub":
     st.title("🎓 MIT Learning Hub")
 
     st.info("""
-    Quick access portal for your MIT OpenCourseWare
+    Direct access to your MIT OpenCourseWare
     Industrial AI & Mechatronics roadmap.
     """)
 
@@ -915,8 +1062,82 @@ elif menu == "MIT Learning Hub":
         🚀 Launch Course
         </a>
         </div>
-        <br>
         """, unsafe_allow_html=True)
+
+# =========================================================
+# MANAGEMENT CENTER
+# =========================================================
+
+elif menu == "Management Center":
+
+    st.title("🛠️ AIMecha Management Center")
+
+    tab1, tab2, tab3 = st.tabs(
+        [
+            "Courses",
+            "Notes",
+            "Journal"
+        ]
+    )
+
+    with tab1:
+
+        st.subheader("📚 All Modules")
+
+        all_courses = pd.read_sql_query(
+            "SELECT * FROM courses",
+            conn
+        )
+
+        st.dataframe(
+            all_courses,
+            use_container_width=True
+        )
+
+    with tab2:
+
+        st.subheader("📝 All Technical Notes")
+
+        all_notes = pd.read_sql_query(
+            """
+            SELECT
+            notes.id,
+            courses.course_name,
+            notes.note,
+            notes.created_at
+
+            FROM notes
+
+            LEFT JOIN courses
+            ON notes.course_id = courses.id
+
+            ORDER BY notes.id DESC
+            """,
+            conn
+        )
+
+        st.dataframe(
+            all_notes,
+            use_container_width=True
+        )
+
+    with tab3:
+
+        st.subheader("📓 All Journal Entries")
+
+        all_journal = pd.read_sql_query(
+            """
+            SELECT *
+            FROM journal
+            ORDER BY id DESC
+            """,
+            conn
+        )
+
+        st.dataframe(
+            all_journal,
+            use_container_width=True
+        )
 
 # =========================================================
 # ADD COURSE
@@ -970,7 +1191,7 @@ elif menu == "Add Course":
             conn.commit()
 
             st.success(
-                "Engineering Module Added!"
+                "Module Added!"
             )
 
 # =========================================================
@@ -981,8 +1202,6 @@ elif menu == "System Recovery":
 
     st.title("💾 System Recovery")
 
-    st.subheader("📥 Backup Database")
-
     conn.execute(
         "PRAGMA wal_checkpoint(FULL);"
     )
@@ -990,7 +1209,7 @@ elif menu == "System Recovery":
     with open(DB_NAME, "rb") as f:
 
         st.download_button(
-            label="Download AIMecha Backup",
+            label="📥 Download Backup",
             data=f,
             file_name=f"""
 AIMecha_Backup_
@@ -1002,10 +1221,10 @@ AIMecha_Backup_
 
     st.divider()
 
-    st.subheader("⚠️ Restore Database")
+    st.subheader("⚠️ Restore Backup")
 
     restore_file = st.file_uploader(
-        "Upload Backup",
+        "Upload Backup File",
         type=["db"]
     )
 
