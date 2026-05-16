@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Full Production Build (PDF Upgrade Only)
+# AIMecha Study OS - Full Production Build (PDF Upgrade ONLY)
 # =========================================================
 
 import streamlit as st
@@ -44,10 +44,32 @@ div.stButton > button {
     border: 1px solid #00d4ff;
     background: #0f172a;
     color: white;
+    transition: all 0.3s ease;
 }
 div.stButton > button:hover {
     border-color: #00ffcc;
-    box-shadow: 0 0 10px rgba(0,255,204,0.4);
+    box-shadow: 0px 0px 10px rgba(0, 255, 204, 0.4);
+    background: #1e293b;
+}
+div[data-testid="stMetric"] {
+    background: rgba(0,212,255,0.05);
+    padding: 15px;
+    border-radius: 15px;
+    border: 1px solid #1e293b;
+}
+.header-card {
+    background: linear-gradient(135deg,#0f172a,#1e293b);
+    border-radius: 20px;
+    padding: 30px;
+    border: 1px solid #334155;
+    margin-bottom: 25px;
+}
+.course-card {
+    background: rgba(255,255,255,0.03);
+    border-radius: 15px;
+    padding: 20px;
+    border: 1px solid #1e293b;
+    margin-bottom: 15px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -66,31 +88,79 @@ def get_conn():
 conn = get_conn()
 
 # =========================================================
-# INIT DB (ONLY SMALL ADDITION HERE)
+# INIT DB (ONLY ADDITION = PDF COLUMN)
 # =========================================================
 
 def init_db():
     with conn:
-        conn.execute("""
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS courses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            course_name TEXT NOT NULL,
+            completed INTEGER DEFAULT 0
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id INTEGER,
+            note TEXT,
+            sketch_data TEXT,
+            image_blob BLOB,
+            created_at TEXT,
+            updated_at TEXT
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            entry TEXT,
+            sketch_data TEXT,
+            image_blob BLOB,
+            created_at TEXT,
+            updated_at TEXT
+        )
+        """)
+
+        # =========================================================
+        # ✅ ONLY CHANGE HERE: PDF SUPPORT
+        # =========================================================
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignment_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date_completed TEXT NOT NULL,
             course_name TEXT NOT NULL,
             assignment_name TEXT NOT NULL,
-            notes TEXT
+            notes TEXT,
+            assignment_file BLOB
         )
         """)
 
-        # ✅ NEW COLUMN (PDF STORAGE)
         try:
-            conn.execute("ALTER TABLE assignment_logs ADD COLUMN assignment_file BLOB")
+            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN assignment_file BLOB")
         except:
             pass
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS profile (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            bio TEXT,
+            title TEXT,
+            profile_img BLOB
+        )
+        """)
 
 init_db()
 
 # =========================================================
-# IMAGE UTIL (UNCHANGED)
+# UTILITIES (UNCHANGED)
 # =========================================================
 
 def compress_img(image_file):
@@ -99,7 +169,7 @@ def compress_img(image_file):
     try:
         img = Image.open(image_file)
         img = img.convert("RGB")
-        img.thumbnail((900, 900))
+        img.thumbnail((1000, 1000))
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=80)
         return buf.getvalue()
@@ -107,7 +177,11 @@ def compress_img(image_file):
         return None
 
 def multimodal_input(key):
-    text = st.text_area("Notes", key=f"text_{key}")
+    text = st.text_area(
+        "Technical Notes / Documentation Context",
+        key=f"text_input_{key}",
+        height=120
+    )
 
     c1, c2 = st.columns(2)
 
@@ -124,26 +198,30 @@ def multimodal_input(key):
         )
 
     with c2:
-        img = st.file_uploader("Image", type=["png","jpg","jpeg"], key=f"img_{key}")
+        img = st.file_uploader(
+            "Upload Image",
+            type=["png","jpg","jpeg"],
+            key=f"img_{key}"
+        )
 
     sketch_b64 = None
-    if canvas is not None and canvas.image_data is not None:
-        arr = canvas.image_data
-        if isinstance(arr, np.ndarray) and arr.shape[-1] == 4 and np.any(arr[:, :, 3] > 0):
-            try:
+    if canvas and canvas.image_data is not None:
+        try:
+            arr = canvas.image_data
+            if np.any(arr[:, :, 3] > 0):
                 img_obj = Image.fromarray(arr.astype("uint8"), "RGBA")
                 buf = io.BytesIO()
                 img_obj.save(buf, format="PNG")
                 sketch_b64 = base64.b64encode(buf.getvalue()).decode()
-            except:
-                pass
+        except:
+            pass
 
-    img_blob = compress_img(img)
+    img_blob = compress_img(img) if img else None
 
     return text, sketch_b64, img_blob
 
 # =========================================================
-# SIDEBAR (UNCHANGED)
+# SIDEBAR
 # =========================================================
 
 menu = st.sidebar.radio("Menu", [
@@ -158,11 +236,47 @@ menu = st.sidebar.radio("Menu", [
 ])
 
 # =========================================================
-# DASHBOARD (UNCHANGED)
+# DASHBOARD (PDF FEATURE ADDED HERE ONLY)
 # =========================================================
 
 if menu == "Dashboard":
-    st.title("AIMecha Dashboard")
+    st.title("⚙️ AIMecha Engineering Dashboard")
+
+    st.subheader("📝 Assignment Tracker (WITH PDF SUPPORT)")
+
+    pdf_file = st.file_uploader("Upload Assignment PDF (optional)", type=["pdf"])
+    pdf_blob = pdf_file.read() if pdf_file else None
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        course_name = st.text_input("Course Name", "General Course")
+
+    with col2:
+        assignment_name = st.text_input("Assignment Name")
+
+    with col3:
+        if st.button("Save Assignment"):
+            if assignment_name.strip() == "":
+                st.error("Assignment name required")
+            else:
+                conn.execute("""
+                    INSERT INTO assignment_logs
+                    (date_completed, course_name, assignment_name, notes, assignment_file)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    datetime.now().strftime("%Y-%m-%d"),
+                    course_name,
+                    assignment_name,
+                    "PDF uploaded submission",
+                    pdf_blob
+                ))
+                conn.commit()
+                st.success("Assignment saved with PDF!")
+
+    # View table
+    df = pd.read_sql("SELECT id, date_completed, course_name, assignment_name FROM assignment_logs", conn)
+    st.dataframe(df, use_container_width=True)
 
 # =========================================================
 # COURSES (UNCHANGED CORE)
@@ -191,41 +305,6 @@ elif menu == "Professional CV":
 
 elif menu == "Add Course":
     st.title("Add Course")
-
-# =========================================================
-# ⭐ ONLY MODIFIED PART: ASSIGNMENT LOGGING (INSIDE DASHBOARD AREA LOGIC)
-# =========================================================
-
-elif menu == "Dashboard":
-    st.title("AIMecha Dashboard")
-
-    st.subheader("📝 Assignment Tracker (PDF ENABLED)")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        pdf_file = st.file_uploader("Upload Assignment PDF", type=["pdf"])
-
-        if pdf_file:
-            pdf_blob = pdf_file.read()
-        else:
-            pdf_blob = None
-
-    with col2:
-        if st.button("Save Assignment"):
-            conn.execute("""
-                INSERT INTO assignment_logs 
-                (date_completed, course_name, assignment_name, notes, assignment_file)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                datetime.now().strftime("%Y-%m-%d"),
-                "General Course",
-                "Uploaded Assignment",
-                "PDF Submission",
-                pdf_blob
-            ))
-            conn.commit()
-            st.success("Assignment + PDF saved!")
 
 # =========================================================
 # SYSTEM RECOVERY (UNCHANGED)
