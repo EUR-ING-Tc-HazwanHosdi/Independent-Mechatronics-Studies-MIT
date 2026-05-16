@@ -329,11 +329,19 @@ if menu == "Dashboard":
     st.divider()
 
     # =========================================================
-    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
+    # MIT OCW ASSIGNMENT, CSV & PDF TRACKER
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
     st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
+    # Structural database assertion to guarantee file blob capability
+    with conn:
+        try:
+            conn.execute("ALTER TABLE assignment_logs ADD COLUMN file_blob BLOB")
+            conn.execute("ALTER TABLE assignment_logs ADD COLUMN file_name TEXT")
+        except sqlite3.OperationalError:
+            pass  # Columns already provisioned inside local DB matrix
+
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
@@ -373,15 +381,25 @@ if menu == "Dashboard":
             as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1: Indoor Voice")
             as_notes = st.text_area("Submission / Code Notes", placeholder="Passed all local check50 tests successfully...")
             
+            # Integrated PDF Resource Interface
+            as_pdf = st.file_uploader("Attach Solution Document / Grade Certificate", type=["pdf"], key="assignment_pdf_drop")
+            
             if st.button("💾 Append Task Node"):
                 if as_name.strip() == "":
                     st.error("Assignment name cannot be empty.")
                 else:
+                    # Ingest PDF file context into system RAM prior to DB streaming
+                    pdf_blob = None
+                    pdf_name = None
+                    if as_pdf is not None:
+                        pdf_blob = as_pdf.read()
+                        pdf_name = as_pdf.name
+
                     with conn:
                         conn.execute("""
-                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
-                            VALUES (?, ?, ?, ?)
-                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name.strip(), as_notes))
+                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, file_blob, file_name)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name.strip(), as_notes, pdf_blob, pdf_name))
                     st.success("Assignment completion logged!")
                     st.rerun()
 
@@ -395,11 +413,31 @@ if menu == "Dashboard":
     if db_assignment_logs.empty:
         st.info("No assignment logs committed inside the runtime registry yet.")
     else:
-        st.dataframe(
-            db_assignment_logs[["id", "date_completed", "course_name", "assignment_name", "notes"]], 
-            use_container_width=True, 
-            hide_index=True
-        )
+        # Layout assignments as data cards to elegantly surface interactive PDF downloads
+        for _, log in db_assignment_logs.iterrows():
+            with st.container(border=True):
+                meta_col, action_col = st.columns([5, 1])
+                
+                with meta_col:
+                    st.markdown(f"#### 🎓 {log['assignment_name']}")
+                    st.caption(f"📂 **Module:** {log['course_name']} | 📅 **Completed:** {log['date_completed']} | **Registry ID:** {log['id']}")
+                    if log['notes']:
+                        st.info(log['notes'])
+                
+                with action_col:
+                    # Render binary file download system if a PDF was attached
+                    if 'file_blob' in log and log['file_blob'] is not None:
+                        st.download_button(
+                            label="📄 Download PDF",
+                            data=log['file_blob'],
+                            file_name=log['file_name'] if log['file_name'] else "document.pdf",
+                            mime="application/pdf",
+                            key=f"dl_pdf_{log['id']}"
+                        )
+                    else:
+                        st.caption("No PDF Attached")
+                        
+        st.divider()
         
         with st.popover("🗑️ Purge Assignment Records"):
             st.warning("This action removes logged metrics.")
