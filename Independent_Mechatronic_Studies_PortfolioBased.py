@@ -186,6 +186,11 @@ def init_db():
             INSERT INTO profile (id, name, bio, title)
             VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
             """)
+        # Run this once to update your existing table
+        try:
+            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
+        except sqlite3.OperationalError:
+            pass
 
 init_db()
 
@@ -344,7 +349,6 @@ if menu == "Dashboard":
             try:
                 uploaded_df = pd.read_csv(assignment_csv)
                 required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
-                
                 if all(col in uploaded_df.columns for col in required_cols):
                     if st.button("🚀 Commit Assignments to DB"):
                         with conn:
@@ -353,37 +357,56 @@ if menu == "Dashboard":
                                     INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
                                     VALUES (?, ?, ?, ?)
                                 """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
-                        st.success("Assignment history parsed and saved successfully!")
+                        st.success("Assignment history parsed!")
                         st.rerun()
-                else:
-                    st.error(f"Data schema layout error. Ensure document contains headers: {required_cols}")
             except Exception as e:
                 st.error(f"CSV Parse Subroutine Fault: {e}")
 
     with col_manual:
         st.markdown("**Log Completed Task**")
-        with st.popover("➕ Log Single Completed Assignment"):
-            as_date = st.date_input("Completion Date", datetime.now())
-            
-            course_options = ["General Study Task"]
-            if not df.empty:
-                course_options = df['course_name'].tolist()
+        
+        # --- PDF UPLOADER TAB INTEGRATION ---
+        tab_text, tab_pdf = st.tabs(["📝 Manual Log", "📄 PDF Upload"])
+
+        with tab_text:
+            with st.popover("➕ Log Single Task"):
+                as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
+                as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1", key="manual_name")
+                as_notes = st.text_area("Notes", key="manual_notes")
                 
-            as_course = st.selectbox("Associated MIT Module", course_options)
-            as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1: Indoor Voice")
-            as_notes = st.text_area("Submission / Code Notes", placeholder="Passed all local check50 tests successfully...")
-            
-            if st.button("💾 Append Task Node"):
-                if as_name.strip() == "":
-                    st.error("Assignment name cannot be empty.")
-                else:
+                if st.button("💾 Append Task Node"):
                     with conn:
                         conn.execute("""
                             INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
                             VALUES (?, ?, ?, ?)
-                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name.strip(), as_notes))
-                    st.success("Assignment completion logged!")
+                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes))
+                    st.success("Logged!")
                     st.rerun()
+
+        with tab_pdf:
+            with st.popover("📤 Upload Assignment PDF"):
+                pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                pdf_course = st.selectbox("Module", course_options, key="pdf_course_sel")
+                pdf_name = st.text_input("Assignment Name", placeholder="e.g., Final Lab Report", key="pdf_name_in")
+                pdf_file = st.file_uploader("Upload PDF Document", type=["pdf"], key="pdf_file_drop")
+                
+                if st.button("🚀 Archive PDF to System"):
+                    if pdf_file is not None and pdf_name:
+                        pdf_bytes = pdf_file.read()
+                        with conn:
+                            conn.execute("""
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
+                                VALUES (?, ?, ?, ?)
+                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
+                        st.success("PDF Encrypted and Stored.")
+                        st.rerun()
+                    else:
+                        st.error("Please provide a name and a file.")
 
     # Master Task Grid Display
     st.markdown("### Master Coursework Submission Registry")
@@ -395,11 +418,24 @@ if menu == "Dashboard":
     if db_assignment_logs.empty:
         st.info("No assignment logs committed inside the runtime registry yet.")
     else:
-        st.dataframe(
-            db_assignment_logs[["id", "date_completed", "course_name", "assignment_name", "notes"]], 
-            use_container_width=True, 
-            hide_index=True
-        )
+        # CUSTOM ROW-BASED DISPLAY FOR PDF ACCESS
+        for _, row in db_assignment_logs.iterrows():
+            with st.container(border=True):
+                cols = st.columns([1, 2, 2, 1])
+                cols[0].write(f"📅 {row['date_completed']}")
+                cols[1].write(f"🏷️ **{row['course_name']}**")
+                cols[2].write(f"📘 {row['assignment_name']}")
+                
+                if 'pdf_blob' in row and row['pdf_blob'] is not None:
+                    cols[3].download_button(
+                        label="📥 View PDF",
+                        data=row['pdf_blob'],
+                        file_name=f"{row['assignment_name']}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_{row['id']}"
+                    )
+                else:
+                    cols[3].caption("No PDF Attached")
         
         with st.popover("🗑️ Purge Assignment Records"):
             st.warning("This action removes logged metrics.")
@@ -408,12 +444,6 @@ if menu == "Dashboard":
                 with conn:
                     conn.execute("DELETE FROM assignment_logs WHERE id=?", (target_id,))
                 st.success(f"Assignment ID {target_id} removed.")
-                st.rerun()
-                
-            if st.button("💥 Structural Zero Wipe All Tasks", key="global_as_wipe_btn"):
-                with conn:
-                    conn.execute("DELETE FROM assignment_logs")
-                st.success("Assignment history tables dropped and reset.")
                 st.rerun()
 
 # =========================================================
