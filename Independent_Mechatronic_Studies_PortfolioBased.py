@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Full Production Build (Fixed Sketchpads)
+# AIMecha Study OS - Full Production Build (Fixed Sketchpads & Schema)
 # =========================================================
 
 import streamlit as st
@@ -142,6 +142,17 @@ def init_db():
             date TEXT NOT NULL,
             exercise_split TEXT NOT NULL,
             load_volume REAL,
+            notes TEXT
+        )
+        """)
+
+        # Missing Assignment Logs Table Creation Fix
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS assignment_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_completed TEXT NOT NULL,
+            course_name TEXT NOT NULL,
+            assignment_name TEXT NOT NULL,
             notes TEXT
         )
         """)
@@ -317,7 +328,7 @@ if menu == "Dashboard":
 
     st.divider()
 
-   # =========================================================
+    # =========================================================
     # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
@@ -354,7 +365,6 @@ if menu == "Dashboard":
         with st.popover("➕ Log Single Completed Assignment"):
             as_date = st.date_input("Completion Date", datetime.now())
             
-            # Fetch active courses dynamically from your DB to populate the dropdown
             course_options = ["General Study Task"]
             if not df.empty:
                 course_options = df['course_name'].tolist()
@@ -380,7 +390,6 @@ if menu == "Dashboard":
     try:
         db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
     except sqlite3.OperationalError:
-        # Fallback if table wasn't created yet
         db_assignment_logs = pd.DataFrame()
     
     if db_assignment_logs.empty:
@@ -444,7 +453,7 @@ elif menu == "Courses":
                             with conn:
                                 conn.execute("DELETE FROM notes WHERE course_id=?", (row['id'],))
                                 conn.execute("DELETE FROM courses WHERE id=?", (row['id'],))
-                            st.success("Module systematically scrubbed.")
+                            st.success("Module systematically scanned.")
                             st.rerun()
                 
                 with m3:
@@ -456,7 +465,6 @@ elif menu == "Courses":
                 
                 st.divider()
                 
-                # Add Note Input Field with Linked Sketchpad
                 st.subheader("Add Course Log / Documentation Entry")
                 txt, sk, im = multimodal_input(f"course_module_entry_{row['id']}")
                 
@@ -475,7 +483,6 @@ elif menu == "Courses":
                 
                 st.divider()
                 
-                # Render Historical Module Notes & Drawings
                 notes_df = pd.read_sql_query("""
                     SELECT * FROM notes 
                     WHERE course_id=? AND (note LIKE ? OR note IS NULL)
@@ -550,7 +557,7 @@ elif menu == "Journal":
     for _, j in journal_df.iterrows():
         with st.container(border=True):
             jh1, jh2, jh3 = st.columns([6, 1, 1])
-            jh1.subheader(j['title'])
+            jh2.subheader(j['title'])
             
             with jh2:
                 with st.popover("✏️"):
