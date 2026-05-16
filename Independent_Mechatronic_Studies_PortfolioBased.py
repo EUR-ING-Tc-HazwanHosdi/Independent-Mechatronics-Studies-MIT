@@ -460,82 +460,70 @@ elif menu == "Courses":
     courses = pd.read_sql_query("SELECT * FROM courses", conn)
     
     if courses.empty:
-        st.info("No educational modules registered. Head over to 'Add Course' to get started.")
+        st.info("No educational modules registered.")
     else:
-        search_note = st.text_input("🔍 Filter Notes Workspace By Phrase Key", placeholder="Type keywords here...")
-        
         for _, row in courses.iterrows():
             status_tag = "✅ Done" if row['completed'] else "⏳ In Progress"
             
-            # 1. CREATE THE EXPANDER
-            exp = st.expander(f"⚙️ {row['course_name']} [{row['category']}] — {status_tag}")
-            
-            # 2. ONLY RENDER CONTENT IF EXPANDER IS OPENED
-            with exp:
-                m1, m2, m3 = st.columns([2, 2, 3])
-                # ... (Keep your Modify/Delete/Checkbox logic here) ...
+            with st.expander(f"⚙️ {row['course_name']} — {status_tag}"):
+                # Top Actions
+                c1, c2 = st.columns([1, 1])
+                # ... [Keep your existing Delete/Complete buttons here] ...
                 
                 st.divider()
                 
-                # 3. THE FIX: WRAP THE SKETCHPAD IN A UNIQUE ID
-                st.subheader("Add Course Log / Documentation Entry")
+                # --- CLEAN INPUT SYSTEM ---
+                st.subheader("📝 Module Log Entry")
                 
-                # We add 'v2' and the row ID to ensure the key is totally unique
-                # This prevents the "frozen" canvas issue in loops
-                txt, sk, im = multimodal_input(f"course_id_{row['id']}_note")
+                # Simplified 2-column input: Text on left, Image on right
+                txt_col, img_col = st.columns([2, 1])
                 
-                if st.button("🚀 Commit Entry to Module Stack", key=f"btn_n_{row['id']}"):
-                    if txt.strip() == "" and sk is None and im is None:
-                        st.error("Cannot commit an empty modular log entry.")
+                with txt_col:
+                    note_text = st.text_area("Technical Documentation / Notes", 
+                                            key=f"nt_txt_{row['id']}", 
+                                            placeholder="Enter equations, logic flows, or lecture summaries...")
+                
+                with img_col:
+                    note_img = st.file_uploader("Upload Schematic / Screenshot", 
+                                               type=["png", "jpg", "jpeg"], 
+                                               key=f"nt_img_{row['id']}")
+
+                if st.button("🚀 Commit to Module Stack", key=f"commit_btn_{row['id']}"):
+                    if note_text.strip() == "" and note_img is None:
+                        st.error("Cannot commit an empty log.")
                     else:
+                        # Process image if uploaded
+                        img_blob = None
+                        if note_img:
+                            img_blob = note_img.read()
+                            
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                         with conn:
                             conn.execute("""
-                            INSERT INTO notes (course_id, note, sketch_data, image_blob, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            """, (row['id'], txt, sk, im, timestamp, timestamp))
-                        st.success("Entry logged successfully!")
+                                INSERT INTO notes (course_id, note, image_blob, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?)
+                            """, (row['id'], note_text, img_blob, timestamp, timestamp))
+                        st.success("Documentation Saved.")
                         st.rerun()
-                
+
                 st.divider()
-                # ... (Rest of your code for displaying notes) ...
+
+                # --- DISPLAY SAVED NOTES ---
+                # Fetch notes specifically for this course
+                course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ?", conn, params=(row['id'],))
                 
-                notes_df = pd.read_sql_query("""
-                    SELECT * FROM notes 
-                    WHERE course_id=? AND (note LIKE ? OR note IS NULL)
-                    ORDER BY id DESC
-                """, conn, params=(row['id'], f"%{search_note}%"))
-                
-                for _, note in notes_df.iterrows():
-                    with st.container(border=True):
-                        t1, t2, t3 = st.columns([6, 1, 1])
-                        t1.caption(f"📅 Logged: {note['created_at']} | Sync: {note['updated_at'] or 'Initial'}")
-                        
-                        with t2:
-                            with st.popover("✏️"):
-                                edit_txt = st.text_area("Update Note Content", value=note['note'] or "", key=f"ed_nt_{note['id']}")
-                                if st.button("💾 Update Text", key=f"up_nt_{note['id']}"):
-                                    with conn:
-                                        conn.execute("UPDATE notes SET note=?, updated_at=? WHERE id=?", (edit_txt, datetime.now().strftime("%Y-%m-%d %H:%M"), note['id']))
-                                    st.rerun()
-                        
-                        with t3:
-                            if st.button("🗑️", key=f"del_nt_{note['id']}"):
-                                with conn:
-                                    conn.execute("DELETE FROM notes WHERE id=?", (note['id'],))
-                                st.rerun()
-                        
-                        if note['note']:
-                            st.write(note['note'])
+                if not course_notes.empty:
+                    for _, n in course_notes.iterrows():
+                        with st.container(border=True):
+                            # Display text
+                            if n['note']:
+                                st.write(n['note'])
                             
-                        n1, n2 = st.columns(2)
-                        if note['sketch_data']:
-                            try:
-                                n1.image(base64.b64decode(note['sketch_data']), caption="Vector Sketch Blueprint")
-                            except Exception:
-                                pass
-                        if note['image_blob']:
-                            n2.image(note['image_blob'], caption="Reference Spec Attachment")
+                            # Display uploaded image
+                            if n['image_blob']:
+                                st.image(n['image_blob'], caption=f"Attached Spec - {n['created_at']}")
+                            
+                            st.caption(f"Logged: {n['created_at']}")
 
 # =========================================================
 # MODULE 3: CHRONOLOGICAL ENGINEERING JOURNAL
