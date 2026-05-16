@@ -314,69 +314,29 @@ for course, url in mit_courses.items():
 # =========================================================
 
 if menu == "Dashboard":
-    st.title("📁 Simple PDF Registry")
+    st.title("⚙️ AIMecha Engineering & Physical Optimization Dashboard")
+    
+    df = pd.read_sql_query("SELECT * FROM courses", conn)
+    notes_count = pd.read_sql_query("SELECT COUNT(*) FROM notes", conn).iloc[0,0]
+    journal_count = pd.read_sql_query("SELECT COUNT(*) FROM journal", conn).iloc[0,0]
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Active Modules", len(df))
+    completion = (df['completed'].mean() * 100) if not df.empty else 0
+    c2.metric("Curriculum Completion", f"{completion:.1f}%")
+    c3.metric("Technical Notes Stack", notes_count)
+    c4.metric("Journal Logs Committed", journal_count)
+    
+    st.markdown("""
+    <div class="header-card">
+        <h3>System Overview Matrix</h3>
+        <p style="color: #94a3b8;">AIMecha Study OS operates as an isolated knowledge containment engine. 
+        Engineered specifically for organizing mathematical models, real-time control system diagrams, 
+        and hardware engineering notes across robotics, machine learning, and embedded firmware design tracks.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 1. Automatically make sure the table exists
-    with conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS assignment_registry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                course_name TEXT,
-                assignment_title TEXT,
-                pdf_name TEXT,
-                pdf_blob BLOB
-            );
-        """)
-
-    # 2. The Upload Form
-    with st.form("upload_form", clear_on_submit=True):
-        course = st.text_input("Course Name")
-        title = st.text_input("Assignment Title")
-        uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
-        
-        if st.form_submit_button("Save to Database"):
-            if course and title and uploaded_file:
-                # Convert the uploaded file into raw bytes
-                file_bytes = uploaded_file.read()
-                file_name = uploaded_file.name
-                
-                # Save directly into the database
-                with conn:
-                    conn.execute("""
-                        INSERT INTO assignment_registry (course_name, assignment_title, pdf_name, pdf_blob)
-                        VALUES (?, ?, ?, ?)
-                    """, (course, title, file_name, file_bytes))
-                
-                st.success(f"Saved {file_name} successfully!")
-                st.rerun()
-            else:
-                st.error("Please fill out all fields and upload a file.")
-
-    st.markdown("---")
-    st.subheader("📚 Saved Documents")
-
-    # 3. View and Restore Saved Files
-    records = conn.execute("SELECT id, course_name, assignment_title, pdf_name FROM assignment_registry").fetchall()
-
-    if not records:
-        st.info("No documents stored yet.")
-    else:
-        for rec in records:
-            rec_id, c_name, a_title, f_name = rec
-            
-            # Create a simple row for each saved document
-            with st.expander(f"📄 {c_name} - {a_title} ({f_name})"):
-                # Grab the file bytes from the database only when the box is clicked open
-                row = conn.execute("SELECT pdf_blob FROM assignment_registry WHERE id = ?", (rec_id,)).fetchone()
-                
-                if row and row[0]:
-                    # The download button restores the raw PDF back to your computer
-                    st.download_button(
-                        label="📥 Download & Restore PDF File",
-                        data=row[0],
-                        file_name=f_name,
-                        mime="application/pdf"
-                    )
+    st.divider()
 
     # =========================================================
     # MIT OCW ASSIGNMENT & EXERCISE TRACKER
