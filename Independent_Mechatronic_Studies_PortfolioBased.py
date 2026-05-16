@@ -103,6 +103,15 @@ def init_db():
     with conn:
         cursor = conn.cursor()
         
+        # New Centralized Media Table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS media_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id INTEGER NOT NULL,
+            parent_type TEXT NOT NULL, -- 'note', 'journal', or 'assignment'
+            image_blob BLOB NOT NULL
+        )
+        """)
         # Courses Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS courses (
@@ -237,53 +246,33 @@ def compress_img(image_file):
         return None
 
 def multimodal_input(key):
-    """ Renders the dual text field, responsive canvas sketchpad, and file attachment hooks. """
-    text = st.text_area(
-        "Technical Notes / Documentation Context",
-        key=f"text_input_{key}",
-        height=120,
-        placeholder="Enter equations, operational thresholds, or execution logs..."
-    )
+    text = st.text_area("Documentation Context", key=f"text_input_{key}", height=120)
     
     c1, c2 = st.columns(2)
     with c1:
-        st.caption("🎨 Engineering Sketchpad Workspace")
         canvas = st_canvas(
-            fill_color="rgba(0, 212, 255, 0.05)",
-            stroke_width=3,
-            stroke_color="#00d4ff",
-            background_color="#0e1117",
-            height=250,
-            width=500,
-            drawing_mode="freedraw",
-            key=f"canvas_component_{key}",
-            update_streamlit=True
+            stroke_width=3, stroke_color="#00d4ff", background_color="#0e1117",
+            height=250, width=500, drawing_mode="freedraw", key=f"canvas_{key}"
         )
 
     with c2:
-        st.caption("🖼️ Upload Reference Documentation Spec")
-        img = st.file_uploader(
-            "Upload Image Attachment",
-            type=["png", "jpg", "jpeg"],
-            key=f"img_upload_{key}"
-        )
+        # ALLOW MULTIPLE FILES HERE
+        imgs = st.file_uploader("Upload Attachments", type=["png", "jpg", "jpeg"], 
+                                accept_multiple_files=True, key=f"img_multi_{key}")
 
+    # Process Sketch
     sketch_b64 = None
-    # Process canvas layer vectors safely
     if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
-        # Evaluate if alpha channels have concrete drawn lines
         if np.any(arr[:, :, 3] > 0):  
-            try:
-                raw_img = Image.fromarray(arr, 'RGBA')
-                buf = io.BytesIO()
-                raw_img.save(buf, format="PNG")
-                sketch_b64 = base64.b64encode(buf.getvalue()).decode()
-            except Exception as e:
-                st.error(f"Canvas drawing compression fault: {e}")
+            raw_img = Image.fromarray(arr, 'RGBA')
+            buf = io.BytesIO()
+            raw_img.save(buf, format="PNG")
+            sketch_b64 = base64.b64encode(buf.getvalue()).decode()
 
-    img_blob = compress_img(img) if img else None
-    return text, sketch_b64, img_blob
+    # Process all images into a list of blobs
+    img_blobs = [compress_img(i) for i in imgs] if imgs else []
+    return text, sketch_b64, img_blobs
 
 # =========================================================
 # APPLICATION NAVIGATION & QUICK LAUNCH SIDEBAR
@@ -598,23 +587,37 @@ elif menu == "Journal":
     with st.expander("➕ Open New Chronological System Entry Channel", expanded=True):
         j_title = st.text_input("Log Diagnostic Target Title", "Daily System Engineering Iteration Report")
         
-        txt, sk, im = multimodal_input("journal_master_channel")
+        # Capture input from multimodal function
+        txt, sk, im_list = multimodal_input("journal_master_channel")
         
         if st.button("🚀 Push Log Entry to Master Stream", key="commit_journal_btn"):
-            if txt.strip() == "" and sk is None and im is None:
+            if txt.strip() == "" and sk is None and not im_list:
                 st.error("Cannot commit an empty system journal entry.")
             else:
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                db_cursor = conn.cursor() 
                 with conn:
-                    conn.execute("""
-                    INSERT INTO journal (title, entry, sketch_data, image_blob, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """, (j_title, txt, sk, im, timestamp, timestamp))
-                st.success("Journal update streamed to system storage array.")
+                    # 1. Insert the text and sketch
+                    db_cursor.execute("""
+                        INSERT INTO journal (title, entry, sketch_data, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (j_title, txt, sk, timestamp, timestamp))
+                    
+                    # 2. Get the new ID
+                    last_id = db_cursor.lastrowid
+                    
+                    # 3. Save all images to the attachments table
+                    for blob in im_list:
+                        if blob:
+                            db_cursor.execute("""
+                                INSERT INTO media_attachments (parent_id, parent_type, image_blob)
+                                VALUES (?, 'journal', ?)
+                            """, (last_id, blob))
+                st.success(f"Journal update streamed with {len(im_list)} images.")
                 st.rerun()
             
     st.divider()
-    search_j = st.text_input("🔍 Filter Master Journal Stream By String Value", placeholder="Search records...")
+    search_j = st.text_input("🔍 Filter Master Journal Stream", placeholder="Search records...")
     
     journal_df = pd.read_sql_query("""
         SELECT * FROM journal 
@@ -629,11 +632,12 @@ elif menu == "Journal":
             
             with jh2:
                 with st.popover("✏️"):
-                    e_title = st.text_input("Modify Title Header", value=j['title'], key=f"ejt_{j['id']}")
-                    e_entry = st.text_area("Modify Body Context", value=j['entry'] or "", key=f"eje_{j['id']}")
+                    e_title = st.text_input("Modify Title", value=j['title'], key=f"ejt_{j['id']}")
+                    e_entry = st.text_area("Modify Body", value=j['entry'] or "", key=f"eje_{j['id']}")
                     if st.button("💾 Apply Edits", key=f"sve_j_{j['id']}"):
                         with conn:
-                            conn.execute("UPDATE journal SET title=?, entry=?, updated_at=? WHERE id=?", (e_title, e_entry, datetime.now().strftime("%Y-%m-%d %H:%M"), j['id']))
+                            conn.execute("UPDATE journal SET title=?, entry=?, updated_at=? WHERE id=?", 
+                                         (e_title, e_entry, datetime.now().strftime("%Y-%m-%d %H:%M"), j['id']))
                         st.rerun()
             
             with jh3:
@@ -642,18 +646,26 @@ elif menu == "Journal":
                         conn.execute("DELETE FROM journal WHERE id=?", (j['id'],))
                     st.rerun()
                     
-            st.caption(f"🕒 Node Creation Metric: {j['created_at']} | Alteration Marker: {j['updated_at'] or 'No Changes'}")
+            st.caption(f"🕒 Created: {j['created_at']} | Modified: {j['updated_at'] or 'No Changes'}")
+            
             if j['entry']:
                 st.write(j['entry'])
                 
-            jc1, jc2 = st.columns(2)
+            # --- MULTIMODAL RECALL AREA ---
             if j['sketch_data']:
-                try:
-                    jc1.image(base64.b64decode(j['sketch_data']), caption="Diagnostic Workspace Sketch")
-                except Exception:
-                    pass
-            if j['image_blob']:
-                jc2.image(j['image_blob'], caption="Hardware Component Reference Photo")
+                st.image(base64.b64decode(j['sketch_data']), caption="Diagnostic Workspace Sketch", width=500)
+
+            # NEW: Multi-Image Gallery Recall
+            media = pd.read_sql_query(
+                "SELECT image_blob FROM media_attachments WHERE parent_id = ? AND parent_type = 'journal'", 
+                conn, params=(j['id'],)
+            )
+
+            if not media.empty:
+                st.markdown("---")
+                cols = st.columns(3) 
+                for idx, m_row in media.iterrows():
+                    cols[idx % 3].image(m_row['image_blob'], use_container_width=True)
 
 # =========================================================
 # MODULE 4: SYSTEM OPERATING PORTFOLIO (CV MANAGER)
