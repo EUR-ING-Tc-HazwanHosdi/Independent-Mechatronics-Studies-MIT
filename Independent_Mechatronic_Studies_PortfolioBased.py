@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - FULL RESTORED PROFESSIONAL VERSION
+# AIMecha Study OS - FULL RECOVERY SAFE VERSION
 # =========================================================
 
 import streamlit as st
@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# FILE PATHS (LOGOS RESTORED)
+# FILES
 # =========================================================
 
 DB_NAME = "aimecha_study_os.db"
@@ -33,32 +33,33 @@ LOGO_PATH = "AIMECHA.png"
 MIT_LOGO_PATH = "MIT-OCW.png"
 
 # =========================================================
-# THEME
+# DB AUTO RECOVERY ENGINE
 # =========================================================
 
-st.markdown("""
-<style>
-.stApp {
-    background-color: #0b1120;
-    color: white;
-}
-[data-testid="stSidebar"] {
-    background: #020617;
-}
-</style>
-""", unsafe_allow_html=True)
+def ensure_db():
+    if not os.path.exists(DB_NAME):
+        open(DB_NAME, "wb").close()
 
-# =========================================================
-# DATABASE
-# =========================================================
-
-@st.cache_resource
 def get_conn():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 conn = get_conn()
+
+def auto_recover():
+    try:
+        conn.execute("SELECT 1")
+    except:
+        os.remove(DB_NAME)
+        open(DB_NAME, "wb").close()
+
+auto_recover()
+ensure_db()
+
+# =========================================================
+# DATABASE INIT
+# =========================================================
 
 def init_db():
     with conn:
@@ -120,7 +121,7 @@ def init_db():
         if c.fetchone()[0] == 0:
             c.execute("""
             INSERT INTO profile (id, name, bio, title)
-            VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
+            VALUES (1, 'Your Name', 'AI & Mechatronics Engineer', 'AIMecha Developer')
             """)
 
 init_db()
@@ -129,11 +130,11 @@ init_db()
 # PDF PARSER
 # =========================================================
 
-def parse_assignment_pdf(file):
+def parse_pdf(file):
     text = ""
     with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text += page.extract_text() or ""
+        for p in pdf.pages:
+            text += p.extract_text() or ""
 
     data = {
         "date_completed": "",
@@ -151,7 +152,7 @@ def parse_assignment_pdf(file):
         elif "assignment" in l:
             data["assignment_name"] = line.split(":")[-1].strip()
         elif "note" in l:
-            data["notes"] += line.split(":")[-1].strip() + " "
+            data["notes"] += line.split(":")[-1] + " "
 
     return data
 
@@ -159,8 +160,8 @@ def parse_assignment_pdf(file):
 # MULTIMODAL INPUT
 # =========================================================
 
-def multimodal_input(key):
-    text = st.text_area("Notes", key=f"text_{key}")
+def multimodal(key):
+    text = st.text_area("Notes", key=f"t_{key}")
 
     c1, c2 = st.columns(2)
 
@@ -170,70 +171,60 @@ def multimodal_input(key):
             background_color="#0e1117",
             height=250,
             drawing_mode="freedraw",
-            key=f"canvas_{key}"
+            key=f"c_{key}"
         )
 
     with c2:
-        img = st.file_uploader("Upload Image", type=["png","jpg","jpeg"], key=f"img_{key}")
+        img = st.file_uploader("Image", type=["png","jpg","jpeg"], key=f"i_{key}")
 
-    sketch_b64 = None
+    sketch = None
     if canvas and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
         if np.any(arr > 0):
             img_obj = Image.fromarray(arr)
             buf = io.BytesIO()
             img_obj.save(buf, format="PNG")
-            sketch_b64 = base64.b64encode(buf.getvalue()).decode()
+            sketch = base64.b64encode(buf.getvalue()).decode()
 
     img_blob = None
     if img:
-        image = Image.open(img)
+        im = Image.open(img)
         buf = io.BytesIO()
-        image.save(buf, format="JPEG")
+        im.save(buf, format="JPEG")
         img_blob = buf.getvalue()
 
-    return text, sketch_b64, img_blob
+    return text, sketch, img_blob
 
 # =========================================================
-# SIDEBAR (LOGOS RESTORED SAFELY)
+# SIDEBAR + LOGOS
 # =========================================================
 
 st.sidebar.title("AIMecha OS")
 
-# --- Logo safe load ---
 if os.path.exists(LOGO_PATH):
     st.sidebar.image(LOGO_PATH, use_container_width=True)
-else:
-    st.sidebar.caption("AIMECHA OS")
 
 menu = st.sidebar.radio("Navigation", [
     "Dashboard",
     "Courses",
     "Journal",
-    "Professional CV",
-    "MIT Learning Hub",
+    "CV",
+    "MIT Hub",
     "Add Course",
     "System Recovery"
 ])
 
 st.sidebar.divider()
 
-# --- MIT Logo safe load ---
 if os.path.exists(MIT_LOGO_PATH):
     st.sidebar.image(MIT_LOGO_PATH, width=180)
 
-st.sidebar.subheader("MIT OCW Links")
-st.sidebar.markdown("""
-- https://ocw.mit.edu/
-- https://introtodeeplearning.com/
-""")
-
 # =========================================================
-# DASHBOARD (WITH PDF SYSTEM RESTORED)
+# DASHBOARD
 # =========================================================
 
 if menu == "Dashboard":
-    st.title("⚙️ Dashboard")
+    st.title("Dashboard")
 
     courses = pd.read_sql_query("SELECT * FROM courses", conn)
     notes = pd.read_sql_query("SELECT COUNT(*) FROM notes", conn).iloc[0,0]
@@ -246,24 +237,20 @@ if menu == "Dashboard":
 
     st.divider()
 
-    # =========================
-    # PDF ASSIGNMENT SYSTEM
-    # =========================
-    st.subheader("📄 Assignment Upload (PDF)")
+    st.subheader("📄 PDF Assignment Upload")
 
-    pdf_file = st.file_uploader("Upload Assignment PDF", type=["pdf"])
+    pdf = st.file_uploader("Upload PDF", type=["pdf"])
 
-    if pdf_file:
-        parsed = parse_assignment_pdf(pdf_file)
-
+    if pdf:
+        parsed = parse_pdf(pdf)
         st.json(parsed)
 
         if st.button("Save Assignment"):
             with conn:
                 conn.execute("""
-                    INSERT INTO assignment_logs
-                    (date_completed, course_name, assignment_name, notes)
-                    VALUES (?,?,?,?)
+                INSERT INTO assignment_logs
+                (date_completed, course_name, assignment_name, notes)
+                VALUES (?,?,?,?)
                 """, (
                     parsed["date_completed"],
                     parsed["course_name"],
@@ -273,11 +260,8 @@ if menu == "Dashboard":
             st.success("Saved!")
             st.rerun()
 
-    st.divider()
-
-    st.subheader("Assignment Logs")
-    df = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY id DESC", conn)
-    st.dataframe(df, use_container_width=True)
+    st.subheader("Assignments")
+    st.dataframe(pd.read_sql_query("SELECT * FROM assignment_logs", conn))
 
 # =========================================================
 # COURSES
@@ -290,14 +274,14 @@ elif menu == "Courses":
 
     for _, c in courses.iterrows():
         with st.expander(c["course_name"]):
-            txt, sk, im = multimodal_input(c["id"])
 
-            if st.button("Save Note", key=f"n_{c['id']}"):
+            txt, sk, im = multimodal(c["id"])
+
+            if st.button("Save Note", key=f"s_{c['id']}"):
                 with conn:
                     conn.execute("""
-                        INSERT INTO notes
-                        (course_id, note, sketch_data, image_blob, created_at, updated_at)
-                        VALUES (?,?,?,?,?,?)
+                    INSERT INTO notes
+                    VALUES (NULL,?,?,?,?,?,?)
                     """, (
                         c["id"], txt, sk, im,
                         datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -313,14 +297,13 @@ elif menu == "Journal":
     st.title("Journal")
 
     title = st.text_input("Title")
-    txt, sk, im = multimodal_input("journal")
+    txt, sk, im = multimodal("j")
 
-    if st.button("Save Journal"):
+    if st.button("Save"):
         with conn:
             conn.execute("""
-                INSERT INTO journal
-                (title, entry, sketch_data, image_blob, created_at, updated_at)
-                VALUES (?,?,?,?,?,?)
+            INSERT INTO journal
+            VALUES (NULL,?,?,?,?,?,?)
             """, (
                 title, txt, sk, im,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -329,33 +312,27 @@ elif menu == "Journal":
         st.rerun()
 
 # =========================================================
-# CV MODULE (RESTORED SAFE)
+# CV
 # =========================================================
 
-elif menu == "Professional CV":
+elif menu == "CV":
     st.title("Professional CV")
 
     df = pd.read_sql_query("SELECT * FROM profile WHERE id=1", conn)
 
-    if df.empty:
-        st.warning("No profile found")
-    else:
+    if not df.empty:
         p = df.iloc[0]
-
-        st.markdown(f"""
-        ## {p['name']}
-        ### {p['title']}
-        {p['bio']}
-        """)
+        st.write(p["name"])
+        st.write(p["title"])
+        st.write(p["bio"])
 
 # =========================================================
 # MIT HUB
 # =========================================================
 
-elif menu == "MIT Learning Hub":
+elif menu == "MIT Hub":
     st.title("MIT OCW Hub")
-
-    st.write("Use sidebar links for MIT OCW learning paths.")
+    st.write("Use sidebar links.")
 
 # =========================================================
 # ADD COURSE
@@ -364,20 +341,28 @@ elif menu == "MIT Learning Hub":
 elif menu == "Add Course":
     st.title("Add Course")
 
-    name = st.text_input("Course Name")
+    name = st.text_input("Name")
     cat = st.text_input("Category")
 
     if st.button("Add"):
         with conn:
-            conn.execute("INSERT INTO courses (category, course_name) VALUES (?,?)", (cat, name))
-        st.success("Added!")
+            conn.execute("INSERT INTO courses VALUES (NULL,?,?,0)", (cat, name))
+        st.success("Added")
 
 # =========================================================
 # SYSTEM RECOVERY
 # =========================================================
 
 elif menu == "System Recovery":
-    st.title("System Backup")
+    st.title("System Recovery")
 
     with open(DB_NAME, "rb") as f:
-        st.download_button("Download DB Backup", f, file_name="aimecha_backup.db")
+        st.download_button("Backup DB", f, file_name="backup.db")
+
+    restore = st.file_uploader("Restore DB", type=["db"])
+
+    if restore and st.button("Restore"):
+        with open(DB_NAME, "wb") as f:
+            f.write(restore.getbuffer())
+        st.success("Restored")
+        st.rerun()
