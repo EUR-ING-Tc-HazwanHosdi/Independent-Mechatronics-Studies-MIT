@@ -466,22 +466,32 @@ elif menu == "Courses":
             status_tag = "✅ Done" if row['completed'] else "⏳ In Progress"
             
             with st.expander(f"⚙️ {row['course_name']} — {status_tag}"):
-                # Top Actions
                 c1, c2 = st.columns([1, 1])
-                # ... [Keep your existing Delete/Complete buttons here] ...
+                with c1:
+                    if not row['completed']:
+                        if st.button("🔗 Flag As Complete", key=f"comp_{row['id']}"):
+                            with conn:
+                                conn.execute("UPDATE courses SET completed = 1 WHERE id = ?", (row['id'],))
+                            st.rerun()
+                    else:
+                        if st.button("🔄 Return to Active Buffer", key=f"re_act_{row['id']}"):
+                            with conn:
+                                conn.execute("UPDATE courses SET completed = 0 WHERE id = ?", (row['id'],))
+                            st.rerun()
+                with c2:
+                    if st.button("🗑️ Wipe Module Structural Node", key=f"del_c_{row['id']}"):
+                        with conn:
+                            conn.execute("DELETE FROM courses WHERE id = ?", (row['id'],))
+                        st.rerun()
                 
                 st.divider()
+                st.subheader("📝 Append Module Log Entry")
                 
-                # --- CLEAN INPUT SYSTEM ---
-                st.subheader("📝 Module Log Entry")
-                
-                # Simplified 2-column input: Text on left, Image on right
                 txt_col, img_col = st.columns([2, 1])
-                
                 with txt_col:
                     note_text = st.text_area("Technical Documentation / Notes", 
-                                            key=f"nt_txt_{row['id']}", 
-                                            placeholder="Enter equations, logic flows, or lecture summaries...")
+                                             key=f"nt_txt_{row['id']}", 
+                                             placeholder="Enter equations, logic flows, or lecture summaries...")
                 
                 with img_col:
                     note_img = st.file_uploader("Upload Schematic / Screenshot", 
@@ -492,7 +502,6 @@ elif menu == "Courses":
                     if note_text.strip() == "" and note_img is None:
                         st.error("Cannot commit an empty log.")
                     else:
-                        # Process image if uploaded
                         img_blob = None
                         if note_img:
                             img_blob = note_img.read()
@@ -507,23 +516,58 @@ elif menu == "Courses":
                         st.rerun()
 
                 st.divider()
+                st.subheader("📂 Saved Documentation Stack")
 
-                # --- DISPLAY SAVED NOTES ---
-                # Fetch notes specifically for this course
-                course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ?", conn, params=(row['id'],))
-                
-                if not course_notes.empty:
+                # =========================================================
+                # EXTENDED NOTES OPERATIONS PANEL (EDIT & DELETE INLINE)
+                # =========================================================
+                course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ? ORDER BY id DESC", conn, params=(row['id'],))
+                if course_notes.empty:
+                    st.caption("No technical logs attached to this module sequence.")
+                else:
                     for _, n in course_notes.iterrows():
                         with st.container(border=True):
-                            # Display text
+                            # Control Header Container for individual Note Nodes
+                            nh1, nh2 = st.columns([5, 1])
+                            with nh1:
+                                st.caption(f"🕒 Registered: {n['created_at']} | Latency Modification: {n['updated_at'] or 'None'}")
+                            
+                            with nh2:
+                                # Stacked action widgets to preserve horizontal grid space
+                                inline_edit_col, inline_del_col = st.columns(2)
+                                
+                                with inline_edit_col:
+                                    with st.popover("✏️", help="Edit local documentation text"):
+                                        st.markdown(f"**Modify Entry Layer [Node ID: {n['id']}]**")
+                                        updated_note_val = st.text_area(
+                                            "Edit Content String", 
+                                            value=n['note'] or "", 
+                                            key=f"edit_str_{n['id']}",
+                                            height=150
+                                        )
+                                        if st.button("💾 Apply Change", key=f"save_edit_{n['id']}"):
+                                            mod_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+                                            with conn:
+                                                conn.execute("""
+                                                    UPDATE notes 
+                                                    SET note = ?, updated_at = ? 
+                                                    WHERE id = ?
+                                                """, (updated_note_val, mod_time, n['id']))
+                                            st.success("Buffer modified.")
+                                            st.rerun()
+                                
+                                with inline_del_col:
+                                    if st.button("🗑️", key=f"wipe_note_{n['id']}", help="Purge record entirely"):
+                                        with conn:
+                                            conn.execute("DELETE FROM notes WHERE id = ?", (n['id'],))
+                                        st.success("Purged.")
+                                        st.rerun()
+
+                            # Body rendering frame below control layer
                             if n['note']:
-                                st.write(n['note'])
-                            
-                            # Display uploaded image
+                                st.markdown(n['note'])
                             if n['image_blob']:
-                                st.image(n['image_blob'], caption=f"Attached Spec - {n['created_at']}")
-                            
-                            st.caption(f"Logged: {n['created_at']}")
+                                st.image(n['image_blob'], use_container_width=False, width=400)
 
 # =========================================================
 # MODULE 3: CHRONOLOGICAL ENGINEERING JOURNAL
