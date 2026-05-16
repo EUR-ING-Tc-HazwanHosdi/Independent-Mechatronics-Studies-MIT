@@ -352,98 +352,148 @@ if menu == "Dashboard":
 
     st.divider()
 
-    # =========================================================
+   # =========================================================
     # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
     st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
+    # 1. READ PIPELINE: Safely load assignments before drawing any UI columns
+    try:
+        db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
+    except Exception as e:
+        db_assignment_logs = pd.DataFrame()
+        
+    # 2. INPUT LAYER: Split the top interaction controls cleanly into two columns
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
         st.markdown("**Batch CSV Assignment Log Import**")
         assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
         
-        if db_assignment_logs.empty:
-            st.info("No active academic assignment entries detected inside the system infrastructure registry.")
-        else:
-            for _, row in db_assignment_logs.iterrows():
-                with st.container(border=True):
-                    # Metric header line layout
-                    cols = st.columns([1, 2, 3, 1])
-                    cols[0].write(f"📅 **{row['date_completed']}**")
-                    cols[1].write(f"🏷️ `{row['course_name']}`")
-                    cols[2].write(f"📘 **{row['assignment_name']}**")
-                    
-                    with cols[3]:
-                        inline_as_edit, inline_as_del = st.columns(2)
-                        with inline_as_edit:
-                            with st.popover("✏️", help="Modify textual elements"):
-                                st.markdown(f"**Modify Assignment Text [ID: {row['id']}]**")
-                                up_as_name = st.text_input("Edit Assignment Title", value=row['assignment_name'], key=f"as_name_ed_{row['id']}")
-                                up_as_notes = st.text_area("Edit Explanatory Context", value=row['notes'] or "", key=f"as_notes_ed_{row['id']}")
-                                if st.button("💾 Push Mutation", key=f"save_as_ed_{row['id']}"):
-                                    with conn:
-                                        conn.execute("""
-                                            UPDATE assignment_logs 
-                                            SET assignment_name = ?, notes = ? 
-                                            WHERE id = ?
-                                        """, (up_as_name, up_as_notes, row['id']))
-                                    st.rerun()
-                        with inline_as_del:
-                            if st.button("🗑️", key=f"wipe_as_{row['id']}", help="Wipe assignment log"):
-                                with conn:
-                                    conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
-                                st.rerun()
+        if assignment_csv is not None:
+            try:
+                uploaded_df = pd.read_csv(assignment_csv)
+                required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
+                if all(col in uploaded_df.columns for col in required_cols):
+                    if st.button("🚀 Commit Assignments to DB", key="commit_csv_btn"):
+                        with conn:
+                            for _, row in uploaded_df.iterrows():
+                                conn.execute("""
+                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
+                                    VALUES (?, ?, ?, ?)
+                                """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
+                        st.success("Assignment history parsed!")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"CSV Parse Subroutine Fault: {e}")
 
-                    # Render contextual details if available
-                    if row['notes'] and str(row['notes']).strip() != "":
-                        st.markdown(f"**Notes:** {row['notes']}")
-
-                    # NEW LAYER: Inline Image/Sketch Grid Logic
-                    img_c1, img_c2 = st.columns(2)
-                    
-                    if 'sketch_data' in row and row['sketch_data']:
-                        try:
-                            img_c1.image(base64.b64decode(row['sketch_data']), caption="Assignment Design Sketch / Math Workflow")
-                        except Exception:
-                            pass
-                            
-                    if 'image_blob' in row and row['image_blob']:
-                        img_c2.image(row['image_blob'], caption="Attached Hardware Spec Snapshot / Proof Image")
-                        
-                    if 'pdf_blob' in row and row['pdf_blob'] is not None:
-                        st.download_button(
-                            label="📥 Download Attached Verification PDF Deliverable",
-                            data=row['pdf_blob'],
-                            file_name=f"{row['assignment_name']}.pdf",
-                            mime="application/pdf",
-                            key=f"dl_pdf_node_{row['id']}"
-                        )
+    with col_manual:
+        st.markdown("**Log Completed Task Node**")
+        sub_tab_text, sub_tab_pdf = st.tabs(["📝 Multimodal Logging", "📄 PDF Direct Ingestion"])
 
         with sub_tab_text:
-                with st.popover("➕ Open Dynamic Assignment Log Channel", use_container_width=True):
-                    as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
-                    course_options = ["General Study Task"]
-                    if not df.empty: course_options = df['course_name'].tolist()
-                    as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
-                    as_name = st.text_input("Assignment/Task Name", placeholder="e.g., Problem Set 1 / Lab 3 Matrix", key="manual_name")
-                    
-                    # This routes your assignment tracker directly into your canvas/image upload machine
-                    as_notes, as_sketch, as_img = multimodal_input("assignment_tracker_channel")
-                    
-                    if st.button("💾 Append Task to Master Stack", use_container_width=True):
-                        if not as_name.strip():
-                            st.error("Assignment tracking label cannot be blank.")
-                        else:
+            with st.popover("➕ Open Dynamic Assignment Log Channel", use_container_width=True):
+                as_date = st.date_input("Completion Date", datetime.now(), key="manual_date")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
+                as_name = st.text_input("Assignment/Task Name", placeholder="e.g., Problem Set 1 / Lab 3 Matrix", key="manual_name")
+                
+                # This routes your assignment tracker directly into your canvas/image upload machine
+                as_notes, as_sketch, as_img = multimodal_input("assignment_tracker_channel")
+                
+                if st.button("💾 Append Task to Master Stack", use_container_width=True):
+                    if not as_name.strip():
+                        st.error("Assignment tracking label cannot be blank.")
+                    else:
+                        with conn:
+                            conn.execute("""
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
+                        st.success("Multimodal task record successfully locked in matrix.")
+                        st.rerun()
+
+        with sub_tab_pdf:
+            with st.popover("📤 Upload Formal PDF Deliverable", use_container_width=True):
+                pdf_date = st.date_input("Submission Date", datetime.now(), key="pdf_date")
+                course_options = ["General Study Task"]
+                if not df.empty: course_options = df['course_name'].tolist()
+                pdf_course = st.selectbox("Module Reference Alignment", course_options, key="pdf_course_sel")
+                pdf_name = st.text_input("Assignment Metric Name", placeholder="e.g., Verified Proof Set", key="pdf_name_in")
+                pdf_file = st.file_uploader("Upload PDF Document Binary", type=["pdf"], key="pdf_file_drop")
+                
+                if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
+                    if pdf_file is not None and pdf_name:
+                        pdf_bytes = pdf_file.read()
+                        with conn:
+                            conn.execute("""
+                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
+                                VALUES (?, ?, ?, ?)
+                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
+                        st.success("PDF Encrypted and Stored in Repository.")
+                        st.rerun()
+
+    # 3. DISPLAY LAYER: Full-width registry layout placed out of columns to prevent squeezing layout cards
+    st.markdown("### Master Coursework Submission Registry")
+    
+    if db_assignment_logs.empty:
+        st.info("No active academic assignment entries detected inside the system infrastructure registry.")
+    else:
+        for _, row in db_assignment_logs.iterrows():
+            with st.container(border=True):
+                # Metric header line layout
+                cols = st.columns([1, 2, 3, 1])
+                cols[0].write(f"📅 **{row['date_completed']}**")
+                cols[1].write(f"🏷️ `{row['course_name']}`")
+                cols[2].write(f"📘 **{row['assignment_name']}**")
+                
+                with cols[3]:
+                    inline_as_edit, inline_as_del = st.columns(2)
+                    with inline_as_edit:
+                        with st.popover("✏️", help="Modify textual elements"):
+                            st.markdown(f"**Modify Assignment Text [ID: {row['id']}]**")
+                            up_as_name = st.text_input("Edit Assignment Title", value=row['assignment_name'], key=f"as_name_ed_{row['id']}")
+                            up_as_notes = st.text_area("Edit Explanatory Context", value=row['notes'] or "", key=f"as_notes_ed_{row['id']}")
+                            if st.button("💾 Push Mutation", key=f"save_as_ed_{row['id']}"):
+                                with conn:
+                                    conn.execute("""
+                                        UPDATE assignment_logs 
+                                        SET assignment_name = ?, notes = ? 
+                                        WHERE id = ?
+                                    """, (up_as_name, up_as_notes, row['id']))
+                                st.rerun()
+                    with inline_as_del:
+                        if st.button("🗑️", key=f"wipe_as_{row['id']}", help="Wipe assignment log"):
                             with conn:
-                                # We're adding as_sketch and as_img into our SQL execution step here
-                                conn.execute("""
-                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes, sketch_data, image_blob)
-                                    VALUES (?, ?, ?, ?, ?, ?)
-                                """, (as_date.strftime("%Y-%m-%d"), as_course, as_name, as_notes, as_sketch, as_img))
-                            st.success("Multimodal task record successfully locked in matrix.")
+                                conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
                             st.rerun()
+
+                # Render contextual details if available
+                if row['notes'] and str(row['notes']).strip() != "":
+                    st.markdown(f"**Notes:** {row['notes']}")
+
+                # Inline Image/Sketch Grid Logic
+                img_c1, img_c2 = st.columns(2)
+                
+                if 'sketch_data' in row and row['sketch_data']:
+                    try:
+                        img_c1.image(base64.b64decode(row['sketch_data']), caption="Assignment Design Sketch / Math Workflow")
+                    except Exception:
+                        pass
+                        
+                if 'image_blob' in row and row['image_blob']:
+                    img_c2.image(row['image_blob'], caption="Attached Hardware Spec Snapshot / Proof Image")
+                    
+                if 'pdf_blob' in row and row['pdf_blob'] is not None:
+                    st.download_button(
+                        label="📥 Download Attached Verification PDF Deliverable",
+                        data=row['pdf_blob'],
+                        file_name=f"{row['assignment_name']}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_pdf_node_{row['id']}"
+                    )
 
 # =========================================================
 # MODULE 2: DYNAMIC ENGINEERING STUDY MODULES (COURSES)
