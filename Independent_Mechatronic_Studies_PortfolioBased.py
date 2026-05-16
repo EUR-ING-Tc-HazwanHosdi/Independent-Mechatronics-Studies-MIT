@@ -1,5 +1,5 @@
 # =========================================================
-# AIMecha Study OS - Full Production Build (Fixed Sketchpads & Schema)
+# AIMecha Study OS - Full Production Build (Optimized)
 # =========================================================
 
 import streamlit as st
@@ -90,8 +90,8 @@ div[data-testid="stMetric"] {
 
 @st.cache_resource
 def get_conn():
-    """ Returns global connection cached across execution context frames. """
-    connection = sqlite3.connect(DB_NAME, check_same_thread=False)
+    """ Returns global connection cached across execution context frames with timeout safeguards. """
+    connection = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=15.0)
     connection.execute("PRAGMA journal_mode=WAL;")
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
@@ -151,7 +151,7 @@ def init_db():
         )
         """)
 
-        # Missing Assignment Logs Table Creation Fix
+        # Assignment Logs Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignment_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,7 +191,7 @@ def init_db():
             INSERT INTO profile (id, name, bio, title)
             VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
             """)
-        # Run this once to update your existing table
+            
         try:
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
         except sqlite3.OperationalError:
@@ -252,10 +252,8 @@ def multimodal_input(key):
         )
 
     sketch_b64 = None
-    # Process canvas layer vectors safely
     if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
-        # Evaluate if alpha channels have concrete drawn lines
         if np.any(arr[:, :, 3] > 0):  
             try:
                 raw_img = Image.fromarray(arr, 'RGBA')
@@ -314,29 +312,6 @@ for course, url in mit_courses.items():
 # =========================================================
 
 if menu == "Dashboard":
-    st.title("🎛️ System Registry Space")
-    
-    # 💥 ADD THIS BLOCK HERE TO FIX THE ERROR 💥
-    # This checks if the table exists, and creates it if it doesn't
-    with conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS assignment_registry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                course_name TEXT,
-                assignment_title TEXT,
-                pdf_name TEXT,
-                pdf_blob BLOB
-            );
-        """)
-
-    # =========================================================
-    # 1. ASSIGNMENT REGISTRY ZONE
-    # =========================================================
-    st.subheader("📚 Coursework & Assignment Registry")
-    
-    with st.form("upload_form", clear_on_submit=True):
-        course = st.text_input("Course Name (e.g., CS50P)")
-        # ... the rest of your form code continues exactly the same ...
     st.title("⚙️ AIMecha Engineering & Physical Optimization Dashboard")
     
     df = pd.read_sql_query("SELECT * FROM courses", conn)
@@ -361,9 +336,6 @@ if menu == "Dashboard":
 
     st.divider()
 
-    # =========================================================
-    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
-    # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
     st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
@@ -392,8 +364,6 @@ if menu == "Dashboard":
 
     with col_manual:
         st.markdown("**Log Completed Task**")
-        
-        # --- PDF UPLOADER TAB INTEGRATION ---
         tab_text, tab_pdf = st.tabs(["📝 Manual Log", "📄 PDF Upload"])
 
         with tab_text:
@@ -436,7 +406,6 @@ if menu == "Dashboard":
                     else:
                         st.error("Please provide a name and a file.")
 
-    # Master Task Grid Display
     st.markdown("### Master Coursework Submission Registry")
     try:
         db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
@@ -446,7 +415,6 @@ if menu == "Dashboard":
     if db_assignment_logs.empty:
         st.info("No assignment logs committed inside the runtime registry yet.")
     else:
-        # CUSTOM ROW-BASED DISPLAY FOR PDF ACCESS
         for _, row in db_assignment_logs.iterrows():
             with st.container(border=True):
                 cols = st.columns([1, 2, 2, 1])
@@ -541,22 +509,17 @@ elif menu == "Courses":
                 st.divider()
                 st.subheader("📂 Saved Documentation Stack")
 
-                # =========================================================
-                # EXTENDED NOTES OPERATIONS PANEL (EDIT & DELETE INLINE)
-                # =========================================================
                 course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ? ORDER BY id DESC", conn, params=(row['id'],))
                 if course_notes.empty:
                     st.caption("No technical logs attached to this module sequence.")
                 else:
                     for _, n in course_notes.iterrows():
                         with st.container(border=True):
-                            # Control Header Container for individual Note Nodes
                             nh1, nh2 = st.columns([5, 1])
                             with nh1:
                                 st.caption(f"🕒 Registered: {n['created_at']} | Latency Modification: {n['updated_at'] or 'None'}")
                             
                             with nh2:
-                                # Stacked action widgets to preserve horizontal grid space
                                 inline_edit_col, inline_del_col = st.columns(2)
                                 
                                 with inline_edit_col:
@@ -586,7 +549,6 @@ elif menu == "Courses":
                                         st.success("Purged.")
                                         st.rerun()
 
-                            # Body rendering frame below control layer
                             if n['note']:
                                 st.markdown(n['note'])
                             if n['image_blob']:
@@ -601,7 +563,6 @@ elif menu == "Journal":
     
     with st.expander("➕ Open New Chronological System Entry Channel", expanded=True):
         j_title = st.text_input("Log Diagnostic Target Title", "Daily System Engineering Iteration Report")
-        
         txt, sk, im = multimodal_input("journal_master_channel")
         
         if st.button("🚀 Push Log Entry to Master Stream", key="commit_journal_btn"):
@@ -746,7 +707,6 @@ elif menu == "Add Course":
 
 elif menu == "System Recovery":
     st.title("🛠️ System Resiliency & Recovery Protocols")
-    
     st.warning("Executing a recovery action direct-overwrites or drops system infrastructure assets.")
     
     b1, b2 = st.columns(2)
@@ -765,18 +725,3 @@ elif menu == "System Recovery":
                 )
             except Exception as e:
                 st.error(f"Backup serialization breakdown: {e}")
-                
-    with b2:
-        st.subheader("System Restoration Pipeline")
-        restore_file = st.file_uploader("Drop Backup File for System Injection (.db)", type=["db"])
-        if restore_file is not None:
-            if st.button("🚨 Overwrite System Core Matrix"):
-                try:
-                    conn.close()
-                    with open(DB_NAME, "wb") as f:
-                        f.write(restore_file.getbuffer())
-                    st.cache_resource.clear()
-                    st.success("System architecture restoration successful. Reloading app processes...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Restoration pipeline failure: {e}")
