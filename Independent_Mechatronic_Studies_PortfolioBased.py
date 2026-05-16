@@ -205,7 +205,7 @@ def init_db():
             INSERT INTO profile (id, name, bio, title)
             VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
             """)
-        # Run this once to update your existing table
+            
         try:
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
         except sqlite3.OperationalError:
@@ -266,10 +266,8 @@ def multimodal_input(key):
         )
 
     sketch_b64 = None
-    # Process canvas layer vectors safely
     if canvas is not None and canvas.image_data is not None:
         arr = canvas.image_data.astype("uint8")
-        # Evaluate if alpha channels have concrete drawn lines
         if np.any(arr[:, :, 3] > 0):  
             try:
                 raw_img = Image.fromarray(arr, 'RGBA')
@@ -352,19 +350,17 @@ if menu == "Dashboard":
 
     st.divider()
 
-   # =========================================================
+    # =========================================================
     # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
     st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
     st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
-    # 1. READ PIPELINE: Safely load assignments before drawing any UI columns
     try:
         db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
     except Exception as e:
         db_assignment_logs = pd.DataFrame()
         
-    # 2. INPUT LAYER: Split the top interaction controls cleanly into two columns
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
@@ -400,7 +396,6 @@ if menu == "Dashboard":
                 as_course = st.selectbox("Associated MIT Module", course_options, key="manual_course")
                 as_name = st.text_input("Assignment/Task Name", placeholder="e.g., Problem Set 1 / Lab 3 Matrix", key="manual_name")
                 
-                # This routes your assignment tracker directly into your canvas/image upload machine
                 as_notes, as_sketch, as_img = multimodal_input("assignment_tracker_channel")
                 
                 if st.button("💾 Append Task to Master Stack", use_container_width=True):
@@ -435,7 +430,6 @@ if menu == "Dashboard":
                         st.success("PDF Encrypted and Stored in Repository.")
                         st.rerun()
 
-    # 3. DISPLAY LAYER: Full-width registry layout placed out of columns to prevent squeezing layout cards
     st.markdown("### Master Coursework Submission Registry")
     
     if db_assignment_logs.empty:
@@ -443,7 +437,6 @@ if menu == "Dashboard":
     else:
         for _, row in db_assignment_logs.iterrows():
             with st.container(border=True):
-                # Metric header line layout
                 cols = st.columns([1, 2, 3, 1])
                 cols[0].write(f"📅 **{row['date_completed']}**")
                 cols[1].write(f"🏷️ `{row['course_name']}`")
@@ -470,11 +463,9 @@ if menu == "Dashboard":
                                 conn.execute("DELETE FROM assignment_logs WHERE id = ?", (row['id'],))
                             st.rerun()
 
-                # Render contextual details if available
                 if row['notes'] and str(row['notes']).strip() != "":
                     st.markdown(f"**Notes:** {row['notes']}")
 
-                # Inline Image/Sketch Grid Logic
                 img_c1, img_c2 = st.columns(2)
                 
                 if 'sketch_data' in row and row['sketch_data']:
@@ -562,22 +553,17 @@ elif menu == "Courses":
                 st.divider()
                 st.subheader("📂 Saved Documentation Stack")
 
-                # =========================================================
-                # EXTENDED NOTES OPERATIONS PANEL (EDIT & DELETE INLINE)
-                # =========================================================
                 course_notes = pd.read_sql_query("SELECT * FROM notes WHERE course_id = ? ORDER BY id DESC", conn, params=(row['id'],))
                 if course_notes.empty:
                     st.caption("No technical logs attached to this module sequence.")
                 else:
                     for _, n in course_notes.iterrows():
                         with st.container(border=True):
-                            # Control Header Container for individual Note Nodes
                             nh1, nh2 = st.columns([5, 1])
                             with nh1:
                                 st.caption(f"🕒 Registered: {n['created_at']} | Latency Modification: {n['updated_at'] or 'None'}")
                             
                             with nh2:
-                                # Stacked action widgets to preserve horizontal grid space
                                 inline_edit_col, inline_del_col = st.columns(2)
                                 
                                 with inline_edit_col:
@@ -607,7 +593,6 @@ elif menu == "Courses":
                                         st.success("Purged.")
                                         st.rerun()
 
-                            # Body rendering frame below control layer
                             if n['note']:
                                 st.markdown(n['note'])
                             if n['image_blob']:
@@ -724,80 +709,61 @@ elif menu == "MIT Learning Hub":
         {"Topic": "Mathematics", "Code": "18.06", "Curriculum focus": "Linear Algebra, Vector Transformations"},
         {"Topic": "Computer Science", "Code": "6.0001", "Curriculum focus": "Algorithmic Complexity, Structural Python Optimization"},
         {"Topic": "Systems Engineering", "Code": "RES.6-007", "Curriculum focus": "Fourier Analysis, Continuous Signal Filters"},
-        {"Topic": "Control Theory", "Code": "6.302", "Curriculum focus": "PID Tuning Metrics, State-Space Models"},
-        {"Topic": "Hardware & Robotics", "Code": "2.12", "Curriculum focus": "Kinematic Transforms, Spatial Jacobians"}
+        {"Topic": "Control Theory", "Code": "6.302", "Curriculum focus": "PID Tuning Metrics, Stability Vectors"},
+        {"Topic": "Robotics Mechanics", "Code": "2.12", "Curriculum focus": "Kinematics, Actuator Dynamic State Models"}
     ]
     st.table(pd.DataFrame(mit_syllabus_structure))
 
 # =========================================================
-# MODULE 6: COMPREHENSIVE COMPONENT INTERFACE MANAGEMENT
-# =========================================================
-
-elif menu == "Management Center":
-    st.title("🎛️ Curriculum Management Operations Center")
-    st.caption("Perform complete administrative audits over active database vectors and diagnostic datasets.")
-    
-    c_list = pd.read_sql_query("SELECT id, category, course_name FROM courses", conn)
-    st.subheader("System Modules Register")
-    st.dataframe(c_list, use_container_width=True)
-
-# =========================================================
-# MODULE 7: INTUITIVE CURRICULUM ACQUISITION INTERFACE
+# MODULE 6: MANAGEMENT CENTER (ADD & RECONFIGURE NODES)
 # =========================================================
 
 elif menu == "Add Course":
-    st.title("➕ Track New Educational Engineering Module")
+    st.title("➕ Register Structural System Module Node")
     
-    with st.form("course_addition_form", clear_on_submit=True):
-        c_name = st.text_input("Module Tracking Nomenclature Name", placeholder="e.g., Computer Vision State Estimation")
-        categories = ["Programming", "Artificial Intelligence", "Mechatronics", "Electronics", "Control Systems", "Robotics", "Computer Vision", "Embedded Systems"]
-        c_cat = st.selectbox("Structural Operational Field Classification Category", categories)
+    with st.form("new_course_form"):
+        cat = st.selectbox("Module Branch Cluster Topology", ["Mechatronics", "Artificial Intelligence", "Mathematics", "Control Systems", "Embedded Systems"])
+        name = st.text_input("Course Module Designation Label", placeholder="e.g., MIT 18.06 Linear Algebra")
+        submitted = st.form_submit_button("🚀 Inject Structural Node Into Schema")
         
-        if st.form_submit_button("🚀 Inject Course Module into System Array"):
-            if c_name.strip() == "":
-                st.error("Operation Denied: Course Name cannot consist of empty parameters.")
+        if submitted:
+            if not name.strip():
+                st.error("Branch label cannot remain structurally blank.")
             else:
                 with conn:
-                    conn.execute("INSERT INTO courses (category, course_name, completed) VALUES (?, ?, 0)", (c_cat, c_name.strip()))
-                st.success(f"Successfully integrated '{c_name}' into database structural array.")
+                    conn.execute("INSERT INTO courses (category, course_name, completed) VALUES (?, ?, 0)", (cat, name))
+                st.success(f"System pathway node '{name}' mounted inside the architecture cluster.")
+                st.rerun()
 
 # =========================================================
-# MODULE 8: SYSTEM RESILIENCY RECOVERY PROTOCOLS
+# MODULE 7: MANAGEMENT CENTER & SYSTEM MAINTENANCE
+# =========================================================
+
+elif menu == "Management Center":
+    st.title("🛠️ System Data Infrastructure Hub")
+    
+    st.markdown("### Master Core Course Allocation Grid")
+    courses_df = pd.read_sql_query("SELECT * FROM courses", conn)
+    if courses_df.empty:
+        st.info("Zero operational tracks loaded inside system memory frames.")
+    else:
+        st.dataframe(courses_df, use_container_width=True)
+
+# =========================================================
+# MODULE 8: EMERGENCY RECOVERY RUNTIME
 # =========================================================
 
 elif menu == "System Recovery":
-    st.title("🛠️ System Resiliency & Recovery Protocols")
+    st.title("🚨 Emergency Infrastructure Recovery Matrix")
+    st.warning("Executing maintenance functions below will directly mutate underlying persistent database file sectors.")
     
-    st.warning("Executing a recovery action direct-overwrites or drops system infrastructure assets.")
-    
-    b1, b2 = st.columns(2)
-    
-    with b1:
-        st.subheader("Data Export Subroutine")
-        if st.button("📦 Execute Local DB Compilation"):
-            try:
-                with open(DB_NAME, "rb") as f:
-                    db_bytes = f.read()
-                st.download_button(
-                    label="💾 Download Raw Database Asset",
-                    data=db_bytes,
-                    file_name=f"aimecha_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
-                    mime="application/x-sqlite3"
-                )
-            except Exception as e:
-                st.error(f"Backup serialization breakdown: {e}")
-                
-    with b2:
-        st.subheader("System Restoration Pipeline")
-        restore_file = st.file_uploader("Drop Backup File for System Injection (.db)", type=["db"])
-        if restore_file is not None:
-            if st.button("🚨 Overwrite System Core Matrix"):
-                try:
-                    conn.close()
-                    with open(DB_NAME, "wb") as f:
-                        f.write(restore_file.getbuffer())
-                    st.cache_resource.clear()
-                    st.success("System architecture restoration successful. Reloading app processes...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Restoration pipeline failure: {e}")
+    if st.button("💥 Hard Reset Local Data Tables (Purge All Tables)"):
+        with conn:
+            conn.execute("DROP TABLE IF EXISTS courses;")
+            conn.execute("DROP TABLE IF EXISTS notes;")
+            conn.execute("DROP TABLE IF EXISTS journal;")
+            conn.execute("DROP TABLE IF EXISTS exercise_logs;")
+            conn.execute("DROP TABLE IF EXISTS assignment_logs;")
+            conn.execute("DROP TABLE IF EXISTS profile;")
+        st.success("Persistent relational tables fully dropped. Reload page frame to execute seed subroutine initialization.")
+        st.rerun()
