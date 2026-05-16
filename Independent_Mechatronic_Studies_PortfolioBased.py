@@ -76,6 +76,11 @@ div[data-testid="stMetric"] {
     border: 1px solid #1e293b;
     margin-bottom: 15px;
 }
+.stCanvas {
+    pointer-events: auto !important;
+    visibility: visible !important;
+    z-index: 1000;
+}
 </style>
 """, unsafe_allow_html=True)
 
