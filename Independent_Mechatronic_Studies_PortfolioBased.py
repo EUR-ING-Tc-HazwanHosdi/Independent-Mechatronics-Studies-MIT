@@ -90,10 +90,22 @@ div[data-testid="stMetric"] {
 
 @st.cache_resource
 def get_conn():
-    """ Returns global connection cached across execution context frames. """
-    connection = sqlite3.connect(DB_NAME, check_same_thread=False)
+    """ Returns global SQLite connection """
+
+    connection = sqlite3.connect(
+        DB_NAME,
+        check_same_thread=False
+    )
+
+    # =========================================
+    # SQLITE PERFORMANCE & STABILITY SETTINGS
+    # =========================================
+
     connection.execute("PRAGMA journal_mode=WAL;")
-    connection.execute("PRAGMA foreign_keys = ON;")
+    connection.execute("PRAGMA synchronous=NORMAL;")
+    connection.execute("PRAGMA foreign_keys=ON;")
+    connection.execute("PRAGMA cache_size=-64000;")
+
     return connection
 
 conn = get_conn()
@@ -426,12 +438,39 @@ if menu == "Dashboard":
                 
                 if st.button("🚀 Archive PDF to System Storage", use_container_width=True):
                     if pdf_file is not None and pdf_name:
-                        pdf_bytes = pdf_file.read()
-                        with conn:
-                            conn.execute("""
-                                INSERT INTO assignment_logs (date_completed, course_name, assignment_name, pdf_blob)
-                                VALUES (?, ?, ?, ?)
-                            """, (pdf_date.strftime("%Y-%m-%d"), pdf_course, pdf_name, pdf_bytes))
+                        try:
+    pdf_bytes = pdf_file.getvalue()
+
+    if len(pdf_bytes) == 0:
+        st.error("Uploaded PDF is empty.")
+    else:
+        with conn:
+            conn.execute("""
+                INSERT INTO assignment_logs (
+                    date_completed,
+                    course_name,
+                    assignment_name,
+                    pdf_blob
+                )
+                VALUES (?, ?, ?, ?)
+            """, (
+                pdf_date.strftime("%Y-%m-%d"),
+                pdf_course,
+                pdf_name,
+                sqlite3.Binary(pdf_bytes)
+            ))
+
+        conn.commit()
+
+        st.success(
+            f"PDF stored successfully "
+            f"({len(pdf_bytes)/1024:.2f} KB)"
+        )
+
+        st.rerun()
+
+except Exception as e:
+    st.error(f"PDF storage failure: {e}")
                         st.success("PDF Encrypted and Stored in Repository.")
                         st.rerun()
 
