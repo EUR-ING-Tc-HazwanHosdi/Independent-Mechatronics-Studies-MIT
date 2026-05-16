@@ -317,31 +317,32 @@ if menu == "Dashboard":
 
     st.divider()
 
+   # =========================================================
+    # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
-    # EXERCISE TELEMETRY SUB-INTERFACE
-    # =========================================================
-    st.subheader("🏋️ Physical Performance & Exercise Log Engine")
+    st.subheader("📝 MIT OCW Exercise & Assignment Tracker")
+    st.caption("Log completed problem sets, lab exercises, and programming tasks from your curriculum.")
     
     col_upload, col_manual = st.columns([1, 1])
     
     with col_upload:
-        st.markdown("**Batch CSV Exercise Log Upload Pipeline**")
-        exercise_csv = st.file_uploader("Upload Workout Metrics Dataset (.csv)", type=["csv"], key="exercise_csv_drop")
+        st.markdown("**Batch CSV Assignment Log Import**")
+        assignment_csv = st.file_uploader("Upload Assignment Log CSV", type=["csv"], key="assignment_csv_drop")
         
-        if exercise_csv is not None:
+        if assignment_csv is not None:
             try:
-                uploaded_df = pd.read_csv(exercise_csv)
-                required_cols = ["date", "exercise_split", "load_volume", "notes"]
+                uploaded_df = pd.read_csv(assignment_csv)
+                required_cols = ["date_completed", "course_name", "assignment_name", "notes"]
                 
                 if all(col in uploaded_df.columns for col in required_cols):
-                    if st.button("🚀 Commit File Data Arrays to DB"):
+                    if st.button("🚀 Commit Assignments to DB"):
                         with conn:
                             for _, row in uploaded_df.iterrows():
                                 conn.execute("""
-                                    INSERT INTO exercise_logs (date, exercise_split, load_volume, notes)
+                                    INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
                                     VALUES (?, ?, ?, ?)
-                                """, (str(row['date']), str(row['exercise_split']), float(row['load_volume']), str(row['notes'])))
-                        st.success("Exercise performance history records streamed successfully!")
+                                """, (str(row['date_completed']), str(row['course_name']), str(row['assignment_name']), str(row['notes'])))
+                        st.success("Assignment history parsed and saved successfully!")
                         st.rerun()
                 else:
                     st.error(f"Data schema layout error. Ensure document contains headers: {required_cols}")
@@ -349,44 +350,61 @@ if menu == "Dashboard":
                 st.error(f"CSV Parse Subroutine Fault: {e}")
 
     with col_manual:
-        st.markdown("**Manual Core Metric Intercept**")
-        with st.popover("➕ Log Single Workout Instance"):
-            ex_date = st.date_input("Training Target Date", datetime.now())
-            ex_split = st.selectbox("Workout Focus Split Track", ["Push (Chest/Triceps)", "Pull (Back/Biceps)", "Legs (Anterior/Posterior)", "Core & Cardio Conditioning", "Full Body Synthesis"])
-            ex_vol = st.number_input("Calculated Load Volume Total (kg)", min_value=0.0, step=0.5)
-            ex_notes = st.text_input("Log Diagnostic Notes/Soreness Metrics", placeholder="Completed all active working sets to muscular failure...")
+        st.markdown("**Log Completed Task**")
+        with st.popover("➕ Log Single Completed Assignment"):
+            as_date = st.date_input("Completion Date", datetime.now())
             
-            if st.button("💾 Append Log Node"):
-                with conn:
-                    conn.execute("""
-                        INSERT INTO exercise_logs (date, exercise_split, load_volume, notes)
-                        VALUES (?, ?, ?, ?)
-                    """, (ex_date.strftime("%Y-%m-%d"), ex_split, ex_vol, ex_notes))
-                st.success("Manual workout node logged.")
-                st.rerun()
+            # Fetch active courses dynamically from your DB to populate the dropdown
+            course_options = ["General Study Task"]
+            if not df.empty:
+                course_options = df['course_name'].tolist()
+                
+            as_course = st.selectbox("Associated MIT Module", course_options)
+            as_name = st.text_input("Assignment Name", placeholder="e.g., Problem Set 1: Indoor Voice")
+            as_notes = st.text_area("Submission / Code Notes", placeholder="Passed all local check50 tests successfully...")
+            
+            if st.button("💾 Append Task Node"):
+                if as_name.strip() == "":
+                    st.error("Assignment name cannot be empty.")
+                else:
+                    with conn:
+                        conn.execute("""
+                            INSERT INTO assignment_logs (date_completed, course_name, assignment_name, notes)
+                            VALUES (?, ?, ?, ?)
+                        """, (as_date.strftime("%Y-%m-%d"), as_course, as_name.strip(), as_notes))
+                    st.success("Assignment completion logged!")
+                    st.rerun()
 
-    # Dynamic Grid Display
-    st.markdown("### Master Physical Training Log Workspace")
-    db_exercise_logs = pd.read_sql_query("SELECT * FROM exercise_logs ORDER BY date DESC, id DESC", conn)
+    # Master Task Grid Display
+    st.markdown("### Master Coursework Submission Registry")
+    try:
+        db_assignment_logs = pd.read_sql_query("SELECT * FROM assignment_logs ORDER BY date_completed DESC, id DESC", conn)
+    except sqlite3.OperationalError:
+        # Fallback if table wasn't created yet
+        db_assignment_logs = pd.DataFrame()
     
-    if db_exercise_logs.empty:
-        st.info("No exercise logs committed inside the runtime data frame registry.")
+    if db_assignment_logs.empty:
+        st.info("No assignment logs committed inside the runtime registry yet.")
     else:
-        st.dataframe(db_exercise_logs[["id", "date", "exercise_split", "load_volume", "notes"]], use_container_width=True, hide_index=True)
+        st.dataframe(
+            db_assignment_logs[["id", "date_completed", "course_name", "assignment_name", "notes"]], 
+            use_container_width=True, 
+            hide_index=True
+        )
         
-        with st.popover("🗑️ Purge Workout Diagnostic Entries"):
-            st.warning("Action will clear log arrays. Choose target parameters below.")
-            target_id = st.number_input("Target Log ID to Erase", min_value=1, step=1)
-            if st.button("🚨 Purge Selected Entry", key="single_ex_purge_btn"):
+        with st.popover("🗑️ Purge Assignment Records"):
+            st.warning("This action removes logged metrics.")
+            target_id = st.number_input("Target Assignment ID to Erase", min_value=1, step=1)
+            if st.button("🚨 Purge Selected Task", key="single_as_purge_btn"):
                 with conn:
-                    conn.execute("DELETE FROM exercise_logs WHERE id=?", (target_id,))
-                st.success(f"Log entry node {target_id} decoupled.")
+                    conn.execute("DELETE FROM assignment_logs WHERE id=?", (target_id,))
+                st.success(f"Assignment ID {target_id} removed.")
                 st.rerun()
                 
-            if st.button("💥 Structural Zero Wipe All Data Records", key="global_ex_wipe_btn"):
+            if st.button("💥 Structural Zero Wipe All Tasks", key="global_as_wipe_btn"):
                 with conn:
-                    conn.execute("DELETE FROM exercise_logs")
-                st.success("Exercise records tables dropped and reset.")
+                    conn.execute("DELETE FROM assignment_logs")
+                st.success("Assignment history tables dropped and reset.")
                 st.rerun()
 
 # =========================================================
