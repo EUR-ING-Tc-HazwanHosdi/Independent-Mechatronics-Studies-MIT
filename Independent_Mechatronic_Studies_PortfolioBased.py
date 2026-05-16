@@ -164,7 +164,10 @@ def init_db():
             pdf_blob BLOB
         )
         """)
-
+        try:
+            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN file_reference TEXT")
+        except sqlite3.OperationalError:
+            pass
         # Runtime Schema Updates for existing databases (Prevents crashes if database already exists)
         try:
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN sketch_data TEXT")
