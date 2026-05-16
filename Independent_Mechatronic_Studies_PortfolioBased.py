@@ -337,7 +337,30 @@ if menu == "Dashboard":
     """, unsafe_allow_html=True)
 
     st.divider()
+if menu == "Dashboard":
+    st.title("🎛️ System Registry Space")
+    
+    # 💥 ADD THIS BLOCK HERE TO FIX THE ERROR 💥
+    # This checks if the table exists, and creates it if it doesn't
+    with conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS assignment_registry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_name TEXT,
+                assignment_title TEXT,
+                pdf_name TEXT,
+                pdf_blob BLOB
+            );
+        """)
 
+    # =========================================================
+    # 1. ASSIGNMENT REGISTRY ZONE
+    # =========================================================
+    st.subheader("📚 Coursework & Assignment Registry")
+    
+    with st.form("upload_form", clear_on_submit=True):
+        course = st.text_input("Course Name (e.g., CS50P)")
+        # ... the rest of your form code continues exactly the same ...
     # =========================================================
     # MIT OCW ASSIGNMENT & EXERCISE TRACKER
     # =========================================================
