@@ -707,13 +707,14 @@ elif menu == "Add Course":
 
 elif menu == "System Recovery":
     st.title("🛠️ System Resiliency & Recovery Protocols")
-    st.warning("Executing a recovery action direct-overwrites or drops system infrastructure assets.")
+    st.warning("🚨 CRITICAL WARNING: Executing a recovery overwrite or restoration completely supersedes or erases current infrastructure assets.")
     
     b1, b2 = st.columns(2)
     
     with b1:
-        st.subheader("Data Export Subroutine")
-        if st.button("📦 Execute Local DB Compilation"):
+        st.subheader("📦 Data Export Subroutine")
+        st.caption("Pack the complete tracking ecosystem into a portable SQLite binary ledger.")
+        if st.button("🔄 Compile Current DB State", key="compile_db_btn"):
             try:
                 with open(DB_NAME, "rb") as f:
                     db_bytes = f.read()
@@ -721,7 +722,48 @@ elif menu == "System Recovery":
                     label="💾 Download Raw Database Asset",
                     data=db_bytes,
                     file_name=f"aimecha_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
-                    mime="application/x-sqlite3"
+                    mime="application/x-sqlite3",
+                    key="download_db_triggered"
                 )
             except Exception as e:
                 st.error(f"Backup serialization breakdown: {e}")
+
+    with b2:
+        st.subheader("📤 Data Restoration Engine")
+        st.caption("Upload a previously exported .db file to overwrite and restore the entire ecosystem state.")
+        
+        uploaded_db_file = st.file_uploader(
+            "Upload AIMecha Database Asset (.db)", 
+            type=["db", "sqlite", "sqlite3"], 
+            key="recovery_db_uploader"
+        )
+        
+        if uploaded_db_file is not None:
+            st.error("⚠️ PROCEED WITH CAUTION: Clicking the button below will permanently wipe your current tracking records and replace them with the uploaded backup file.")
+            
+            if st.button("🔥 Execute Hard Database Overwrite", key="execute_db_restore_btn"):
+                try:
+                    # 1. Read uploaded payload into memory
+                    new_db_bytes = uploaded_db_file.read()
+                    
+                    # 2. Sever the active cached database connection pool to unlock file handles
+                    if 'get_conn' in globals():
+                        get_conn.clear()
+                    
+                    # 3. Force close connection if open in active context
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                        
+                    # 4. Atomically overwrite target database container file on local storage disk
+                    with open(DB_NAME, "wb") as f:
+                        f.write(new_db_bytes)
+                        
+                    st.success("✅ System state successfully restored from binary package! Reinitializing core matrix threads...")
+                    
+                    # 5. Flush page cache context and refresh data visuals instantly
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"Critical error encountered during DB hot-swap sequence: {e}")
