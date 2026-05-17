@@ -88,19 +88,25 @@ div[data-testid="stMetric"] {
 # DATABASE ENGINE WITH CONTEXT ISOLATION
 # =========================================================
 
-@st.cache_resource
-def get_conn():
-    """ Returns global connection cached across execution context frames. """
-    connection = sqlite3.connect(DB_NAME, check_same_thread=False)
-    connection.execute("PRAGMA journal_mode=WAL;")
-    connection.execute("PRAGMA foreign_keys = ON;")
-    return connection
+# =========================================================
+# PRODUCTION SAFE DATABASE ENGINE
+# =========================================================
 
-conn = get_conn()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DB_NAME = os.path.join(BASE_DIR, "aimecha_study_os.db")
+
+def get_conn():
+    conn = sqlite3.connect(DB_NAME, timeout=30)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
 
 def init_db():
     """ Ensures schema generation and applies column migrations. """
-    with conn:
+    conn = get_conn()
+cursor = conn.cursor()
+
+try:
         cursor = conn.cursor()
 
         # Courses Table
@@ -210,7 +216,10 @@ def init_db():
             cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
         except sqlite3.OperationalError:
             pass
+conn.commit()
 
+finally:
+    conn.close()
 init_db()
 
 # =========================================================
