@@ -102,14 +102,11 @@ def get_conn():
     return conn
 
 def init_db():
-    """ Ensures schema generation and applies column migrations. """
+
     conn = get_conn()
-cursor = conn.cursor()
+    cursor = conn.cursor()
 
-try:
-        cursor = conn.cursor()
-
-        # Courses Table
+    try:
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS courses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,7 +116,6 @@ try:
         )
         """)
 
-        # Notes Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,16 +124,14 @@ try:
             sketch_data TEXT,
             image_blob BLOB,
             created_at TEXT,
-            updated_at TEXT,
-            FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
+            updated_at TEXT
         )
         """)
 
-        # Journal Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS journal (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
+            title TEXT,
             entry TEXT,
             sketch_data TEXT,
             image_blob BLOB,
@@ -146,18 +140,6 @@ try:
         )
         """)
 
-        # Exercise Data Logs Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS exercise_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            exercise_split TEXT NOT NULL,
-            load_volume REAL,
-            notes TEXT
-        )
-        """)
-
-        # Assignment Logs Table (Upgraded to Multimodal Structural Layer)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS assignment_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,18 +153,6 @@ try:
         )
         """)
 
-        # Runtime Schema Updates for existing databases (Prevents crashes if database already exists)
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN sketch_data TEXT")
-        except sqlite3.OperationalError:
-            pass
-
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN image_blob BLOB")
-        except sqlite3.OperationalError:
-            pass
-
-        # Profile Portfolio Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS profile (
             id INTEGER PRIMARY KEY,
@@ -193,34 +163,18 @@ try:
         )
         """)
 
-        # Runtime Schema Updates
-        try:
-            cursor.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT")
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute("""
+        INSERT OR IGNORE INTO profile (id, name, bio, title)
+        VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
+        """)
 
-        try:
-            cursor.execute("ALTER TABLE journal ADD COLUMN updated_at TEXT")
-        except sqlite3.OperationalError:
-            pass
+        conn.commit()
 
-        # Seed configuration identity
-        cursor.execute("SELECT COUNT(*) FROM profile WHERE id = 1")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-            INSERT INTO profile (id, name, bio, title)
-            VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
-            """)
-        # Run this once to update your existing table
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
-        except sqlite3.OperationalError:
-            pass
-conn.commit()
+    except Exception as e:
+        st.error(f"Database initialization error: {e}")
 
-finally:
-    conn.close()
-init_db()
+    finally:
+        conn.close()
 
 # =========================================================
 # MULTIMODAL IMAGING & CANVAS CONVERSION UTILITIES
