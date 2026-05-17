@@ -88,130 +88,101 @@ div[data-testid="stMetric"] {
 # DATABASE ENGINE WITH CONTEXT ISOLATION
 # =========================================================
 
-@st.cache_resource
-def get_conn():
-    """ Returns global connection cached across execution context frames. """
-    connection = sqlite3.connect(DB_NAME, check_same_thread=False)
-    connection.execute("PRAGMA journal_mode=WAL;")
-    connection.execute("PRAGMA foreign_keys = ON;")
-    return connection
+DB_NAME = "aimecha_study_os.db"
 
-conn = get_conn()
+
+def get_conn():
+    # ALWAYS return fresh connection (fixes NameError + stale conn)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+
+def run_query(query, params=None):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if params:
+            cur.execute(query, params)
+        else:
+            cur.execute(query)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def fetch_df(query):
+    conn = get_conn()
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
 
 def init_db():
-    """ Ensures schema generation and applies column migrations. """
-    with conn:
-        cursor = conn.cursor()
 
-        # Courses Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS courses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            course_name TEXT NOT NULL,
-            completed INTEGER DEFAULT 0
-        )
-        """)
+    conn = get_conn()
+    cur = conn.cursor()
 
-        # Notes Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            course_id INTEGER,
-            note TEXT,
-            sketch_data TEXT,
-            image_blob BLOB,
-            created_at TEXT,
-            updated_at TEXT,
-            FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
-        )
-        """)
+    # SAFE TABLE CREATION
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT,
+        course_name TEXT,
+        completed INTEGER DEFAULT 0
+    )
+    """)
 
-        # Journal Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS journal (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            entry TEXT,
-            sketch_data TEXT,
-            image_blob BLOB,
-            created_at TEXT,
-            updated_at TEXT
-        )
-        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER,
+        note TEXT,
+        sketch_data TEXT,
+        image_blob BLOB,
+        created_at TEXT
+    )
+    """)
 
-        # Exercise Data Logs Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS exercise_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            exercise_split TEXT NOT NULL,
-            load_volume REAL,
-            notes TEXT
-        )
-        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS journal (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        entry TEXT,
+        sketch_data TEXT,
+        image_blob BLOB,
+        created_at TEXT
+    )
+    """)
 
-        # Assignment Logs Table (Upgraded to Multimodal Structural Layer)
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS assignment_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date_completed TEXT NOT NULL,
-            course_name TEXT NOT NULL,
-            assignment_name TEXT NOT NULL,
-            notes TEXT,
-            sketch_data TEXT,
-            image_blob BLOB,
-            pdf_blob BLOB
-        )
-        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS assignment_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date_completed TEXT,
+        course_name TEXT,
+        assignment_name TEXT,
+        notes TEXT,
+        sketch_data TEXT,
+        image_blob BLOB,
+        pdf_blob BLOB
+    )
+    """)
 
-        # Runtime Schema Updates for existing databases (Prevents crashes if database already exists)
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN sketch_data TEXT")
-        except sqlite3.OperationalError:
-            pass
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS profile (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        bio TEXT,
+        title TEXT
+    )
+    """)
 
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN image_blob BLOB")
-        except sqlite3.OperationalError:
-            pass
+    cur.execute("""
+    INSERT OR IGNORE INTO profile (id, name, bio, title)
+    VALUES (1, 'Your Name', 'Engineer', 'AIMecha Developer')
+    """)
 
-        # Profile Portfolio Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS profile (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            bio TEXT,
-            title TEXT,
-            profile_img BLOB
-        )
-        """)
-
-        # Runtime Schema Updates
-        try:
-            cursor.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT")
-        except sqlite3.OperationalError:
-            pass
-
-        try:
-            cursor.execute("ALTER TABLE journal ADD COLUMN updated_at TEXT")
-        except sqlite3.OperationalError:
-            pass
-
-        # Seed configuration identity
-        cursor.execute("SELECT COUNT(*) FROM profile WHERE id = 1")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-            INSERT INTO profile (id, name, bio, title)
-            VALUES (1, 'Your Name', 'Industrial AI & Mechatronics Engineer', 'Engineering Systems Developer')
-            """)
-        # Run this once to update your existing table
-        try:
-            cursor.execute("ALTER TABLE assignment_logs ADD COLUMN pdf_blob BLOB")
-        except sqlite3.OperationalError:
-            pass
-
-init_db()
+    conn.commit()
+    conn.close()
 
 # =========================================================
 # MULTIMODAL IMAGING & CANVAS CONVERSION UTILITIES
@@ -330,7 +301,7 @@ for course, url in mit_courses.items():
 if menu == "Dashboard":
     st.title("⚙️ AIMecha Engineering & Physical Optimization Dashboard")
 
-    df = pd.read_sql_query("SELECT * FROM courses", conn)
+    df = fetch_df("SELECT * FROM courses")
     notes_count = pd.read_sql_query("SELECT COUNT(*) FROM notes", conn).iloc[0,0]
     journal_count = pd.read_sql_query("SELECT COUNT(*) FROM journal", conn).iloc[0,0]
 
