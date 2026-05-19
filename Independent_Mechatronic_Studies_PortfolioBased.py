@@ -747,17 +747,11 @@ elif menu == "System Recovery":
     # =====================================================
 
     st.subheader("📦 Export Full System Backup")
-
     st.caption("Downloads the COMPLETE AIMecha database.")
 
     try:
-
-# =====================================================
-# SAFE SQLITE BACKUP SNAPSHOT
-# =====================================================
-
+        # SAFE SQLITE BACKUP SNAPSHOT
         conn.commit()
-        conn.execute("VACUUM")
 
         backup_conn = sqlite3.connect("temp_backup.db")
 
@@ -771,17 +765,17 @@ elif menu == "System Recovery":
 
         os.remove("temp_backup.db")
 
-                st.download_button(
-                    label="📥 Download Full Backup",
-                    data=db_bytes,
-                    file_name="aimecha_full_backup.db",
-                    mime="application/octet-stream"
+        st.download_button(
+            label="📥 Download Full Backup",
+            data=db_bytes,
+            file_name="aimecha_full_backup.db",
+            mime="application/octet-stream"
         )
 
-        except Exception as e:
-            st.error(f"Backup Export Failure: {e}")
+    except Exception as e:
+        st.error(f"Backup Export Failure: {e}")
 
-        st.divider()
+    st.divider()
 
     # =====================================================
     # IMPORT DATABASE
@@ -805,64 +799,63 @@ elif menu == "System Recovery":
 
             try:
 
-    # =====================================================
-    # FORCE CLOSE EXISTING CONNECTION
-    # =====================================================
+                # =====================================================
+                # FORCE CLOSE EXISTING CONNECTION
+                # =====================================================
 
-    try:
-        conn.commit()
-        conn.close()
-    except:
-        pass
+                try:
+                    conn.commit()
+                    conn.close()
+                except:
+                    pass
 
-    # =====================================================
-    # REMOVE WAL + SHM FILES
-    # =====================================================
+                # =====================================================
+                # REMOVE WAL FILES
+                # =====================================================
 
-    wal_file = DB_NAME + "-wal"
-    shm_file = DB_NAME + "-shm"
+                wal_file = DB_NAME + "-wal"
+                shm_file = DB_NAME + "-shm"
 
-    if os.path.exists(wal_file):
-        os.remove(wal_file)
+                if os.path.exists(wal_file):
+                    os.remove(wal_file)
 
-    if os.path.exists(shm_file):
-        os.remove(shm_file)
+                if os.path.exists(shm_file):
+                    os.remove(shm_file)
 
-    # =====================================================
-    # RESTORE DATABASE
-    # =====================================================
+                # =====================================================
+                # RESTORE DATABASE FILE
+                # =====================================================
 
-    uploaded_db.seek(0)
+                uploaded_db.seek(0)
 
-    with open(DB_NAME, "wb") as f:
-        f.write(uploaded_db.read())
+                with open(DB_NAME, "wb") as f:
+                    f.write(uploaded_db.read())
 
-    # =====================================================
-    # CLEAR STREAMLIT CACHE
-    # =====================================================
+                # =====================================================
+                # RESET STREAMLIT CACHE
+                # =====================================================
 
-    st.cache_resource.clear()
+                st.cache_resource.clear()
 
-    # =====================================================
-    # RELOAD DATABASE CONNECTION
-    # =====================================================
+                # =====================================================
+                # RECONNECT DATABASE
+                # =====================================================
 
-    conn = get_conn()
+                conn = get_conn()
 
-    # =====================================================
-    # VALIDATE DATABASE
-    # =====================================================
+                # =====================================================
+                # VALIDATION CHECK
+                # =====================================================
 
-    test_df = pd.read_sql_query(
-        "SELECT name FROM sqlite_master LIMIT 1",
-        conn
-    )
+                pd.read_sql_query(
+                    "SELECT name FROM sqlite_master LIMIT 1",
+                    conn
+                )
 
-    st.success("✅ Recovery Completed Successfully")
+                st.success("✅ Recovery Completed Successfully")
+                st.info("Database integrity verified.")
 
-    st.info("Database integrity verified.")
+                st.rerun()
 
-    st.rerun()
-
-except Exception as e:
-    st.error(f"Recovery Failure: {e}")
+            except Exception as e:
+                st.error(f"Recovery Failure: {e}")
