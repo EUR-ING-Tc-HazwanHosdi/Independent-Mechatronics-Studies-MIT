@@ -756,32 +756,32 @@ elif menu == "System Recovery":
 # SAFE SQLITE BACKUP SNAPSHOT
 # =====================================================
 
-    conn.commit()
-    conn.execute("VACUUM")
+        conn.commit()
+        conn.execute("VACUUM")
 
-    backup_conn = sqlite3.connect("temp_backup.db")
+        backup_conn = sqlite3.connect("temp_backup.db")
 
-    with backup_conn:
-        conn.backup(backup_conn)
+        with backup_conn:
+            conn.backup(backup_conn)
 
-    backup_conn.close()
+        backup_conn.close()
 
-    with open("temp_backup.db", "rb") as f:
-        db_bytes = f.read()
+        with open("temp_backup.db", "rb") as f:
+            db_bytes = f.read()
 
-    os.remove("temp_backup.db")
+        os.remove("temp_backup.db")
 
-            st.download_button(
-                label="📥 Download Full Backup",
-                data=db_bytes,
-                file_name="aimecha_full_backup.db",
-                mime="application/octet-stream"
+                st.download_button(
+                    label="📥 Download Full Backup",
+                    data=db_bytes,
+                    file_name="aimecha_full_backup.db",
+                    mime="application/octet-stream"
         )
 
-    except Exception as e:
-        st.error(f"Backup Export Failure: {e}")
+        except Exception as e:
+            st.error(f"Backup Export Failure: {e}")
 
-    st.divider()
+        st.divider()
 
     # =====================================================
     # IMPORT DATABASE
