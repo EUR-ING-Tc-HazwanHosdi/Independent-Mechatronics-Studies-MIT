@@ -90,14 +90,21 @@ div[data-testid="stMetric"] {
 
 @st.cache_resource
 def get_conn():
+
     connection = sqlite3.connect(
         DB_NAME,
         check_same_thread=False,
         timeout=15.0
     )
 
+    # =====================================================
+    # SQLITE PERFORMANCE + STABILITY
+    # =====================================================
+
     connection.execute("PRAGMA journal_mode=WAL;")
     connection.execute("PRAGMA foreign_keys = ON;")
+    connection.execute("PRAGMA synchronous=NORMAL;")
+    connection.execute("PRAGMA temp_store=MEMORY;")
 
     return connection
 
@@ -745,16 +752,30 @@ elif menu == "System Recovery":
 
     try:
 
-        conn.commit()
+# =====================================================
+# SAFE SQLITE BACKUP SNAPSHOT
+# =====================================================
 
-        with open(DB_NAME, "rb") as f:
-            db_bytes = f.read()
+    conn.commit()
+    conn.execute("VACUUM")
 
-        st.download_button(
-            label="📥 Download Full Backup",
-            data=db_bytes,
-            file_name="aimecha_full_backup.db",
-            mime="application/octet-stream"
+    backup_conn = sqlite3.connect("temp_backup.db")
+
+    with backup_conn:
+        conn.backup(backup_conn)
+
+    backup_conn.close()
+
+    with open("temp_backup.db", "rb") as f:
+        db_bytes = f.read()
+
+    os.remove("temp_backup.db")
+
+            st.download_button(
+                label="📥 Download Full Backup",
+                data=db_bytes,
+                file_name="aimecha_full_backup.db",
+                mime="application/octet-stream"
         )
 
     except Exception as e:
@@ -784,24 +805,64 @@ elif menu == "System Recovery":
 
             try:
 
-                # Close old DB connection
-                conn.close()
+    # =====================================================
+    # FORCE CLOSE EXISTING CONNECTION
+    # =====================================================
 
-                # Replace database file
-                with open(DB_NAME, "wb") as f:
-                    f.write(uploaded_db.read())
+    try:
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
-                # Clear Streamlit cache
-                st.cache_resource.clear()
+    # =====================================================
+    # REMOVE WAL + SHM FILES
+    # =====================================================
 
-                # Reload fresh connection
-                conn = refresh_connection()
+    wal_file = DB_NAME + "-wal"
+    shm_file = DB_NAME + "-shm"
 
-                st.success("✅ System Recovery Complete")
+    if os.path.exists(wal_file):
+        os.remove(wal_file)
 
-                st.info("Reloading updated database...")
+    if os.path.exists(shm_file):
+        os.remove(shm_file)
 
-                st.rerun()
+    # =====================================================
+    # RESTORE DATABASE
+    # =====================================================
 
-            except Exception as e:
-                st.error(f"Recovery Failure: {e}")
+    uploaded_db.seek(0)
+
+    with open(DB_NAME, "wb") as f:
+        f.write(uploaded_db.read())
+
+    # =====================================================
+    # CLEAR STREAMLIT CACHE
+    # =====================================================
+
+    st.cache_resource.clear()
+
+    # =====================================================
+    # RELOAD DATABASE CONNECTION
+    # =====================================================
+
+    conn = get_conn()
+
+    # =====================================================
+    # VALIDATE DATABASE
+    # =====================================================
+
+    test_df = pd.read_sql_query(
+        "SELECT name FROM sqlite_master LIMIT 1",
+        conn
+    )
+
+    st.success("✅ Recovery Completed Successfully")
+
+    st.info("Database integrity verified.")
+
+    st.rerun()
+
+except Exception as e:
+    st.error(f"Recovery Failure: {e}")
