@@ -90,11 +90,22 @@ div[data-testid="stMetric"] {
 
 @st.cache_resource
 def get_conn():
-    """ Returns global connection cached across execution context frames with timeout safeguards. """
-    connection = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=15.0)
+    connection = sqlite3.connect(
+        DB_NAME,
+        check_same_thread=False,
+        timeout=15.0
+    )
+
     connection.execute("PRAGMA journal_mode=WAL;")
     connection.execute("PRAGMA foreign_keys = ON;")
+
     return connection
+
+
+def refresh_connection():
+    st.cache_resource.clear()
+    return get_conn()
+
 
 conn = get_conn()
 
@@ -702,68 +713,95 @@ elif menu == "Add Course":
                 st.success(f"Successfully integrated '{c_name}' into database structural array.")
 
 # =========================================================
-# MODULE 8: SYSTEM RESILIENCY RECOVERY PROTOCOLS
+# MODULE: SYSTEM RECOVERY
 # =========================================================
 
 elif menu == "System Recovery":
-    st.title("🛠️ System Resiliency & Recovery Protocols")
-    st.warning("🚨 CRITICAL WARNING: Executing a recovery overwrite or restoration completely supersedes or erases current infrastructure assets.")
-    
-    b1, b2 = st.columns(2)
-    
-    with b1:
-        st.subheader("📦 Data Export Subroutine")
-        st.caption("Pack the complete tracking ecosystem into a portable SQLite binary ledger.")
-        if st.button("🔄 Compile Current DB State", key="compile_db_btn"):
-            try:
-                with open(DB_NAME, "rb") as f:
-                    db_bytes = f.read()
-                st.download_button(
-                    label="💾 Download Raw Database Asset",
-                    data=db_bytes,
-                    file_name=f"aimecha_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
-                    mime="application/x-sqlite3",
-                    key="download_db_triggered"
-                )
-            except Exception as e:
-                st.error(f"Backup serialization breakdown: {e}")
 
-    with b2:
-        st.subheader("📤 Data Restoration Engine")
-        st.caption("Upload a previously exported .db file to overwrite and restore the entire ecosystem state.")
-        
-        uploaded_db_file = st.file_uploader(
-            "Upload AIMecha Database Asset (.db)", 
-            type=["db", "sqlite", "sqlite3"], 
-            key="recovery_db_uploader"
+    st.title("🛡️ AIMecha Recovery Center")
+
+    st.markdown("""
+    Full database backup and restore system.
+
+    Includes:
+    - Courses
+    - Notes
+    - Journals
+    - PDFs
+    - Images
+    - Assignment logs
+    - Progress tracking
+    """)
+
+    st.divider()
+
+    # =====================================================
+    # EXPORT DATABASE
+    # =====================================================
+
+    st.subheader("📦 Export Full System Backup")
+
+    st.caption("Downloads the COMPLETE AIMecha database.")
+
+    try:
+
+        conn.commit()
+
+        with open(DB_NAME, "rb") as f:
+            db_bytes = f.read()
+
+        st.download_button(
+            label="📥 Download Full Backup",
+            data=db_bytes,
+            file_name="aimecha_full_backup.db",
+            mime="application/octet-stream"
         )
-        
-        if uploaded_db_file is not None:
-            st.error("⚠️ PROCEED WITH CAUTION: Clicking the button below will permanently wipe your current tracking records and replace them with the uploaded backup file.")
-            
-            if st.button("🔥 Execute Hard Database Overwrite", key="execute_db_restore_btn"):
-                try:
-                    # 1. Read uploaded payload into memory
-                    new_db_bytes = uploaded_db_file.read()
-                    
-                    # 2. Sever the active cached database connection pool to unlock file handles
-                    if 'get_conn' in globals():
-                        get_conn.clear()
-                    
-                    # 3. Force close connection if open in active context
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                        
-                    # 4. Atomically overwrite target database container file on local storage disk
-                    with open(DB_NAME, "wb") as f:
-                        f.write(new_db_bytes)
-                        
-                    st.success("✅ System state successfully restored from binary package! Reinitializing core matrix threads...")
-                    
-                    # 5. Flush page cache context and refresh data visuals instantly
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Critical error encountered during DB hot-swap sequence: {e}")
+
+    except Exception as e:
+        st.error(f"Backup Export Failure: {e}")
+
+    st.divider()
+
+    # =====================================================
+    # IMPORT DATABASE
+    # =====================================================
+
+    st.subheader("♻️ Restore Full System Backup")
+
+    uploaded_db = st.file_uploader(
+        "Upload AIMecha Backup Database",
+        type=["db"]
+    )
+
+    if uploaded_db is not None:
+
+        st.warning("""
+        Restoring a backup will OVERWRITE
+        the current runtime database.
+        """)
+
+        if st.button("🚨 Restore Backup Database"):
+
+            try:
+
+                # Close old DB connection
+                conn.close()
+
+                # Replace database file
+                with open(DB_NAME, "wb") as f:
+                    f.write(uploaded_db.read())
+
+                # Clear Streamlit cache
+                st.cache_resource.clear()
+
+                # Reload fresh connection
+                conn = refresh_connection()
+
+                st.success("✅ System Recovery Complete")
+
+                st.info("Reloading updated database...")
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Recovery Failure: {e}")
