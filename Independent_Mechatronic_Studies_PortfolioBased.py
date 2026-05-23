@@ -716,6 +716,7 @@ elif menu == "Professional CV":
 # =========================================================
 
 elif menu == "MIT Learning Hub":
+
     st.title("🎓 MIT Scholar Curriculum Framework")
 
     st.markdown("""
@@ -725,63 +726,67 @@ elif menu == "MIT Learning Hub":
 
     mit_scholar_framework = [
 
-    {
-        "Phase": "Foundation Mathematics",
-        "MIT Scholar Course": "18.01SC Calculus",
-        "Purpose": "Engineering mathematics foundation"
-    },
+        {
+            "Phase": "Foundation Mathematics",
+            "MIT Scholar Course": "18.01SC Calculus",
+            "Purpose": "Engineering mathematics foundation"
+        },
 
-    {
-        "Phase": "Foundation Mathematics",
-        "MIT Scholar Course": "18.06SC Linear Algebra",
-        "Purpose": "Robotics and AI matrix operations"
-    },
+        {
+            "Phase": "Foundation Mathematics",
+            "MIT Scholar Course": "18.06SC Linear Algebra",
+            "Purpose": "Robotics and AI matrix operations"
+        },
 
-    {
-        "Phase": "Engineering Physics",
-        "MIT Scholar Course": "8.01SC Mechanics",
-        "Purpose": "Motion systems and dynamics"
-    },
+        {
+            "Phase": "Engineering Physics",
+            "MIT Scholar Course": "8.01SC Mechanics",
+            "Purpose": "Motion systems and dynamics"
+        },
 
-    {
-        "Phase": "EECS Foundation",
-        "MIT Scholar Course": "6.01SC Intro EECS",
-        "Purpose": "Electrical systems and computation"
-    },
+        {
+            "Phase": "EECS Foundation",
+            "MIT Scholar Course": "6.01SC Intro EECS",
+            "Purpose": "Electrical systems and computation"
+        },
 
-    {
-        "Phase": "Control Systems",
-        "MIT Scholar Course": "6.302 Feedback Systems",
-        "Purpose": "Automation and PID systems"
-    },
+        {
+            "Phase": "Control Systems",
+            "MIT Scholar Course": "6.302 Feedback Systems",
+            "Purpose": "Automation and PID systems"
+        },
 
-    {
-        "Phase": "Robotics",
-        "MIT Scholar Course": "2.12 Robotics",
-        "Purpose": "Kinematics and robot systems"
-    }
-]
-    st.dataframe(pd.DataFrame(mit_scholar_framework),
-use_container_width=True)
+        {
+            "Phase": "Robotics",
+            "MIT Scholar Course": "2.12 Robotics",
+            "Purpose": "Kinematics and robot systems"
+        }
 
-st.markdown("""
-### AIMecha Scholar Integration Philosophy
+    ]
 
-This system integrates MIT OpenCourseWare Scholar-based
-engineering learning pathways into a portfolio-driven
-independent mechatronics and industrial AI framework.
+    st.dataframe(
+        pd.DataFrame(mit_scholar_framework),
+        use_container_width=True
+    )
 
-Focus Areas:
-- Mathematics foundations
-- Engineering physics
-- EECS systems
-- Robotics
-- Automation
-- Industrial AI
+    st.markdown("""
+    ### AIMecha Scholar Integration Philosophy
 
-The objective is structured competency development
-through guided independent learning and engineering practice.
-""")
+    This system integrates MIT OpenCourseWare Scholar-based
+    engineering learning pathways into a portfolio-driven
+    independent mechatronics and industrial AI framework.
+
+    Focus Areas:
+    - Mathematics foundations
+    - Engineering physics
+    - EECS systems
+    - Robotics
+    - Automation
+    - Industrial AI
+
+    The objective is structured competency development
+    through guided independent learning and engineering practice.
+    """)
 
 # =========================================================
 # MODULE 6: COMPREHENSIVE COMPONENT INTERFACE MANAGEMENT
