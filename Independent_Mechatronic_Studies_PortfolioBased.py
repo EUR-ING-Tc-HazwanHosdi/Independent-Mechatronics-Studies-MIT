@@ -312,18 +312,63 @@ st.sidebar.divider()
 if os.path.exists(MIT_LOGO_PATH):
     st.sidebar.image(MIT_LOGO_PATH, width=180)
 
-st.sidebar.subheader("🎓 MIT OCW Quick Launch")
-mit_courses = {
-    "Python Programming": "https://ocw.mit.edu/courses/6-0001-introduction-to-computer-science-and-programming-in-python-fall-2016/",
-    "Linear Algebra": "https://ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/",
-    "Signals & Systems": "https://ocw.mit.edu/courses/res-6-007-signals-and-systems-spring-2011/",
-    "Feedback Control": "https://ocw.mit.edu/courses/6-302-feedback-systems-spring-2007/",
-    "Robotics": "https://ocw.mit.edu/courses/2-12-introduction-to-robotics-fall-2005/",
-    "Deep Learning": "https://introtodeeplearning.com/"
+st.sidebar.subheader("🎓 MIT Scholar Learning Pathways")
+mit_scholar_tracks = {
+
+    "📘 Mathematics Foundation": {
+        "18.01SC Calculus":
+        "https://ocw.mit.edu/courses/18-01sc-single-variable-calculus-fall-2010/",
+
+        "18.06SC Linear Algebra":
+        "https://ocw.mit.edu/courses/18-06sc-linear-algebra-fall-2011/",
+
+        "18.03SC Differential Equations":
+        "https://ocw.mit.edu/courses/18-03sc-differential-equations-fall-2011/"
+    },
+
+    "⚡ Physics & Engineering": {
+        "8.01SC Classical Mechanics":
+        "https://ocw.mit.edu/courses/8-01sc-classical-mechanics-fall-2016/",
+
+        "8.02SC Electricity & Magnetism":
+        "https://ocw.mit.edu/courses/8-02sc-physics-ii-electricity-and-magnetism-fall-2010/"
+    },
+
+    "💻 EECS & Computing": {
+        "6.01SC Intro EECS":
+        "https://ocw.mit.edu/courses/6-01sc-introduction-to-electrical-engineering-and-computer-science-i-spring-2011/",
+
+        "6.0001 Python":
+        "https://ocw.mit.edu/courses/6-0001-introduction-to-computer-science-and-programming-in-python-fall-2016/"
+    },
+
+    "🤖 Mechatronics & AI": {
+        "Signals & Systems":
+        "https://ocw.mit.edu/courses/res-6-007-signals-and-systems-spring-2011/",
+
+        "Feedback Control":
+        "https://ocw.mit.edu/courses/6-302-feedback-systems-spring-2007/",
+
+        "Robotics":
+        "https://ocw.mit.edu/courses/2-12-introduction-to-robotics-fall-2005/"
+    }
 }
 
-for course, url in mit_courses.items():
-    st.sidebar.markdown(f'<a href="{url}" target="_blank" style="text-decoration:none; color:#00d4ff;">⚡ {course}</a>', unsafe_allow_html=True)
+for category, subjects in mit_scholar_tracks.items():
+
+    st.sidebar.markdown(f"### {category}")
+
+    for course, url in subjects.items():
+
+        st.sidebar.markdown(
+            f'''
+            <a href="{url}" target="_blank"
+            style="text-decoration:none; color:#00d4ff;">
+            ⚡ {course}
+            </a>
+            ''',
+            unsafe_allow_html=True
+        )
 
 # =========================================================
 # MODULE 1: INTERACTIVE ANALYTICS DASHBOARD WITH EXERCISE LOGS
@@ -671,21 +716,72 @@ elif menu == "Professional CV":
 # =========================================================
 
 elif menu == "MIT Learning Hub":
-    st.title("🎓 MIT OpenCourseWare Core Tracking Matrix")
+    st.title("🎓 MIT Scholar Curriculum Framework")
 
     st.markdown("""
     Explore the foundational structure of MIT's core mechatronics and AI engineering pathways. 
     Use the sidebar quick launch links to match your active courses with verified open-source syllabus endpoints.
     """)
 
-    mit_syllabus_structure = [
-        {"Topic": "Mathematics", "Code": "18.06", "Curriculum focus": "Linear Algebra, Vector Transformations"},
-        {"Topic": "Computer Science", "Code": "6.0001", "Curriculum focus": "Algorithmic Complexity, Structural Python Optimization"},
-        {"Topic": "Systems Engineering", "Code": "RES.6-007", "Curriculum focus": "Fourier Analysis, Continuous Signal Filters"},
-        {"Topic": "Control Theory", "Code": "6.302", "Curriculum focus": "PID Tuning Metrics, State-Space Models"},
-        {"Topic": "Hardware & Robotics", "Code": "2.12", "Curriculum focus": "Kinematic Transforms, Spatial Jacobians"}
-    ]
-    st.table(pd.DataFrame(mit_syllabus_structure))
+    mit_scholar_framework = [
+
+    {
+        "Phase": "Foundation Mathematics",
+        "MIT Scholar Course": "18.01SC Calculus",
+        "Purpose": "Engineering mathematics foundation"
+    },
+
+    {
+        "Phase": "Foundation Mathematics",
+        "MIT Scholar Course": "18.06SC Linear Algebra",
+        "Purpose": "Robotics and AI matrix operations"
+    },
+
+    {
+        "Phase": "Engineering Physics",
+        "MIT Scholar Course": "8.01SC Mechanics",
+        "Purpose": "Motion systems and dynamics"
+    },
+
+    {
+        "Phase": "EECS Foundation",
+        "MIT Scholar Course": "6.01SC Intro EECS",
+        "Purpose": "Electrical systems and computation"
+    },
+
+    {
+        "Phase": "Control Systems",
+        "MIT Scholar Course": "6.302 Feedback Systems",
+        "Purpose": "Automation and PID systems"
+    },
+
+    {
+        "Phase": "Robotics",
+        "MIT Scholar Course": "2.12 Robotics",
+        "Purpose": "Kinematics and robot systems"
+    }
+]
+    st.dataframe(pd.DataFrame(mit_scholar_framework),
+use_container_width=True)
+
+st.markdown("""
+### AIMecha Scholar Integration Philosophy
+
+This system integrates MIT OpenCourseWare Scholar-based
+engineering learning pathways into a portfolio-driven
+independent mechatronics and industrial AI framework.
+
+Focus Areas:
+- Mathematics foundations
+- Engineering physics
+- EECS systems
+- Robotics
+- Automation
+- Industrial AI
+
+The objective is structured competency development
+through guided independent learning and engineering practice.
+""")
 
 # =========================================================
 # MODULE 6: COMPREHENSIVE COMPONENT INTERFACE MANAGEMENT
